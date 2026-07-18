@@ -482,6 +482,7 @@ function actionBarHtml(){
         <button class="mini" data-ab="music">🎵 Música</button>
         <button class="mini" data-ab="stats">✦ Stats</button>
         <button class="mini" data-ab="tempo">⏱ Tempo</button>
+        <button class="mini" data-ab="hora">🕐 Hora</button>
         ${moveSel}
         <button class="mini danger" data-ab="reject">🗑 ${im.rej?'Restaurar':'Rejeitar'}</button>
       </div>
@@ -512,6 +513,7 @@ function wireActionBar(c){
     else if(a==='music'&&one)openMusicForPhoto(one);
     else if(a==='stats'&&one)openStatPop(b,one);
     else if(a==='tempo'&&one)openTempoPop(b,one);
+    else if(a==='hora'&&one)openHoraPop(b,one);
     else if(a==='together')bringTogether();
     else if(a==='compare')openCompare();
     else if(a==='reject'){
@@ -542,6 +544,41 @@ function openTempoPop(anchor,name){
 }
 function globalPace(){ const v=parseFloat(localStorage.getItem('rcPace')||''); return v>0?v:1; }
 function setGlobalPace(v){ localStorage.setItem('rcPace', String(v)); }
+
+// popover de horário: edita im.taken (a hora mostrada no HUD e usada no ritmo por EXIF)
+function openHoraPop(anchor,name){
+  closeStatPop();
+  const im=S.images.find(x=>x.name===name); if(!im)return;
+  const d=im.taken?new Date(im.taken):null;
+  const pad=n=>String(n).padStart(2,'0');
+  const dateVal=d?`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`:'';
+  const timeVal=d?`${pad(d.getHours())}:${pad(d.getMinutes())}`:'';
+  const p=el('div','statPop'); statPopEl=p; p.style.width='210px';
+  p.innerHTML=`<h5>Horário desta foto</h5>
+    <label class="fLbl">Data</label><input type="date" class="fIn" id="horaDate" value="${dateVal}">
+    <label class="fLbl" style="margin-top:8px">Hora</label><input type="time" class="fIn" id="horaTime" value="${timeVal}">
+    <div style="display:flex;gap:6px;margin-top:12px">
+      <button class="mini" id="horaClear" title="Volta a não ter hora">Limpar</button>
+      <span style="flex:1"></span>
+      <button class="mini primary" id="horaSave">Salvar</button>
+    </div>
+    <p style="margin:8px 2px 0;color:var(--dim);font-size:11px">Vem do EXIF; edite se faltar ou estiver errado.</p>`;
+  document.body.appendChild(p);
+  ['horaDate','horaTime'].forEach(id=>p.querySelector('#'+id).addEventListener('keydown',e=>e.stopPropagation()));
+  p.querySelector('#horaSave').onclick=()=>{
+    const dv=p.querySelector('#horaDate').value, tv=p.querySelector('#horaTime').value;
+    if(!tv){ toast('Escolha uma hora.'); return; }
+    const base=dv||dateVal||new Date().toISOString().slice(0,10);
+    const ts=new Date(base+'T'+tv).getTime();
+    if(isNaN(ts)){ toast('Data/hora inválida.'); return; }
+    im.taken=ts; save(); closeStatPop(); renderSequence(); toast('Horário: '+fmtHour(ts));
+  };
+  p.querySelector('#horaClear').onclick=()=>{ im.taken=0; save(); closeStatPop(); renderSequence(); toast('Horário removido.'); };
+  const r=anchor.getBoundingClientRect(), pw=p.offsetWidth, ph=p.offsetHeight;
+  let left=Math.min(r.left, innerWidth-8-pw), top=r.top-ph-8; if(top<8)top=r.bottom+8;
+  p.style.left=Math.max(8,left)+'px'; p.style.top=top+'px';
+  setTimeout(()=>document.addEventListener('pointerdown',statPopOutside,true),0);
+}
 
 function renderSidebar(){
   const s=$('#side');
