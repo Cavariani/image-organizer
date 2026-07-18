@@ -41,6 +41,25 @@
   .mini{font-size:12px;padding:5px 8px}
   /* content */
   .content{flex:1;overflow:auto;padding:12px;position:relative}
+  .content.hasBar{padding-bottom:82px}          /* espaço p/ a barra de ações fixa não cobrir a última linha */
+  /* barra de ações fixa embaixo (aparece ao selecionar) */
+  .actionBar{position:fixed;left:200px;right:0;bottom:0;z-index:20;display:flex;align-items:center;gap:12px;
+    padding:10px 14px;background:rgba(25,27,30,.96);backdrop-filter:blur(12px);border-top:1px solid var(--line);
+    box-shadow:0 -6px 24px rgba(0,0,0,.35)}
+  .actionBar .abThumb{width:44px;height:44px;object-fit:cover;border-radius:6px;flex:none;background:var(--panel2)}
+  .actionBar .abName{font-size:12px;color:var(--mut);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:none}
+  .actionBar .abBtns{display:flex;align-items:center;gap:7px;flex:1;flex-wrap:wrap}
+  .actionBar .abClose{flex:none}
+  .actionBar select.mini{padding:6px 8px}
+  /* indicadores read-only no tile (o que a foto já tem) */
+  .tile .tind{position:absolute;right:4px;bottom:4px;display:flex;align-items:center;gap:2px;flex-wrap:wrap-reverse;
+    justify-content:flex-end;max-width:calc(100% - 40px);z-index:2;pointer-events:none}
+  .tile .tind .ti{font-size:11px;background:rgba(0,0,0,.6);border-radius:8px;padding:1px 5px;line-height:1.5}
+  .tile .tind .stb{pointer-events:none}
+  /* opções do popover de tempo */
+  .tempoOpt{display:block;width:100%;text-align:left;border:0;background:transparent;padding:8px 10px;border-radius:7px;color:var(--txt);cursor:pointer;font:inherit}
+  .tempoOpt:hover{background:var(--panel2)}
+  .tempoOpt.on{background:var(--acc-bg);color:#cfe0ff}
   .selbar{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:8px;background:var(--acc-bg);border:1px solid #33507f;border-radius:var(--radius);padding:7px 10px;margin-bottom:10px;font-size:13px;color:#cfe0ff}
   .grid{display:grid;gap:8px}
   .tile{position:relative;aspect-ratio:1;background:var(--panel2);border-radius:6px;overflow:hidden;cursor:pointer;border:2px solid transparent}

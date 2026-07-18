@@ -27,7 +27,7 @@ async function idbSet(k,v){const db=await idb();return new Promise((res,rej)=>{c
 let saveTimer=null;
 function save(){clearTimeout(saveTimer);saveTimer=setTimeout(async()=>{
   const man={};
-  for(const im of S.images) man[im.name]={chap:im.chap,order:im.order,rej:im.rej,taken:im.taken,stats:im.stats,texts:im.texts,cardAfter:im.cardAfter,scene:im.scene,music:im.music};
+  for(const im of S.images) man[im.name]={chap:im.chap,order:im.order,rej:im.rej,taken:im.taken,stats:im.stats,texts:im.texts,cardAfter:im.cardAfter,scene:im.scene,music:im.music,pace:im.pace};
   await idbSet('manifest',man);
   await idbSet('chapters',S.chapters);
   await idbSet('stats',S.stats);
@@ -71,7 +71,7 @@ async function loadFolder(handle){
     imgs.push({name,handle:ent,url:URL.createObjectURL(file),
       chap:(m.chap!==undefined)?m.chap:null, order:(m.order!==undefined)?m.order:null,
       rej:!!m.rej, hash:null, taken:m.taken, stats:m.stats||{},
-      texts:m.texts||[], cardAfter:m.cardAfter||[], scene:m.scene||{}, music:m.music||null});   // undefined = ainda não lido; 0 = lido, sem data
+      texts:m.texts||[], cardAfter:m.cardAfter||[], scene:m.scene||{}, music:m.music||null, pace:m.pace||null});   // undefined = ainda não lido; 0 = lido, sem data
   }
   imgs.sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));
   imgs.forEach((im,i)=>{if(im.order==null)im.order=i;}); // semeia ordem por nome p/ imagens sem manifesto
@@ -223,12 +223,21 @@ function bumpImgStat(im,id,delta){
   save();
 }
 // repinta só os selinhos de um tile (sem re-render geral, pra não fechar o popover)
+// indicadores read-only no tile: stats + 💬 (textos) + 🎵 (música) + 🎬 (cena)
+function tindHtml(im){
+  const sceneSet=im.scene&&((im.scene.fx&&im.scene.fx!=='crossfade')||im.scene.mood);
+  return statBadgesHTML(im)
+    +(((im.texts&&im.texts.length)||(im.cardAfter&&im.cardAfter.length))?'<span class="ti">💬</span>':'')
+    +((im.music&&im.music.file)?'<span class="ti">🎵</span>':'')
+    +(sceneSet?'<span class="ti">🎬</span>':'');
+}
 function refreshTileStats(name){
   document.querySelectorAll('.tile').forEach(t=>{
     if(t.dataset.name!==name)return;
-    const box=t.querySelector('[data-stx]'), im=S.images.find(x=>x.name===name);
-    if(!box||!im)return;
-    box.innerHTML=statBadgesHTML(im)+'<button class="stAdd" data-stadd title="Adicionar stat">＋</button>';
+    const im=S.images.find(x=>x.name===name); if(!im)return;
+    let box=t.querySelector('.tind');
+    if(!box){ box=el('div','tind'); t.appendChild(box); }
+    box.innerHTML=tindHtml(im);
   });
 }
 function closeStatPop(){
@@ -405,105 +414,134 @@ function renderSequence(){
   // paleta de stats — sempre visível: criar/editar as definições (nome, emoji, cor)
   const chips=S.stats.map(s=>`<button class="statChip" data-editstat="${esc(s.id)}"><span class="dot" style="background:${esc(s.color)}"></span><span>${esc(s.emoji||'⭐')} ${esc(s.name)}</span></button>`).join('');
   html+=`<div class="statsBar"><span class="lbl">Stats</span>${chips}<button class="statChip add" data-newstat>＋ Novo</button></div>`;
-  if(S.sel.size){
-    const two=S.sel.size===2;
-    const dests=[...S.chapters.map(ch=>({id:ch.id,name:ch.name})),{id:UN,name:'📥 A definir'},{id:REJ,name:'🗑 Rejeitadas'}]
-      .filter(o=>o.id!==S.active)
-      .map(o=>`<option value="${esc(o.id)}">${esc(o.name)}</option>`).join('');
-    html+=`<div class="selbar">
-      <span>✓ ${S.sel.size} selecionada${S.sel.size>1?'s':''}</span>
-      <div style="flex:1"></div>
-      <select class="mini" data-moveto title="Mover as selecionadas para outro capítulo"><option value="">↦ Mover para…</option>${dests}</select>
-      ${S.active!==UN&&S.active!==REJ?'<button class="mini" data-together>↹ Trazer junto</button>':''}
-      ${two&&S.active!==UN&&S.active!==REJ?'<button class="mini" data-compare>⇆ Comparar</button>':''}
-      <button class="mini danger" data-selrej>Rejeitar sel.</button>
-      <button class="mini" data-clearsel>Limpar seleção</button>
-    </div>`;
-  }
   if(!list.length){
     html+=`<div style="color:var(--mut);padding:40px;text-align:center">Nada em “${title}”.</div>`;
   }else{
     const cols=Math.max(2,Math.floor(($('#content').clientWidth-24)/S.thumb));
     html+=`<div class="grid" style="grid-template-columns:repeat(${cols},1fr)">`;
     list.forEach((im,i)=>{
+      const ind=tindHtml(im);
       html+=`<div class="tile ${S.sel.has(im.name)?'sel':''} ${im.rej?'rej':''}" data-name="${esc(im.name)}">
         <img src="${im.url}" alt="" loading="lazy">
         <span class="idx"${S.active!==REJ?' data-idx style="cursor:pointer" title="Mover para posição"':''}>${i+1}</span>
         <div class="selbox" data-selbox title="Selecionar">✓</div>
-        <button class="del" data-del title="Rejeitar (tira da sequência)">✕</button>
         <span class="rejbadge">rej</span>
-        <button class="txtBtn${((im.texts&&im.texts.length)||(im.cardAfter&&im.cardAfter.length))?' has':''}" data-txt title="Textos / narração">💬${(im.texts&&im.texts.length)?' '+im.texts.length:''}${(im.cardAfter&&im.cardAfter.length)?' ▦':''}</button>
-        <button class="musBtn${im.music&&im.music.file?' has':''}" data-mus title="Música a partir desta foto">🎵</button>
-        <div class="stx" data-stx>${statBadgesHTML(im)}<button class="stAdd" data-stadd title="Adicionar stat">＋</button></div>
+        ${ind?`<div class="tind">${ind}</div>`:''}
       </div>`;
     });
     html+='</div>';
   }
+  html+=actionBarHtml();                               // barra de ações fixa embaixo (aparece se há seleção)
   c.innerHTML=html;
 
-  // selbar actions
-  c.querySelector('[data-clearsel]')?.addEventListener('click',()=>{S.sel.clear();renderSequence();});
-  c.querySelector('[data-moveto]')?.addEventListener('change',e=>{
-    const dest=e.target.value; if(dest)moveToChapter([...S.sel],dest); else e.target.value='';});
-  c.querySelector('[data-together]')?.addEventListener('click',bringTogether);
-  c.querySelector('[data-compare]')?.addEventListener('click',openCompare);
-  c.querySelector('[data-selrej]')?.addEventListener('click',()=>{
-    S.images.filter(i=>S.sel.has(i.name)).forEach(reject);S.sel.clear();renderSequence();updateCounts();});
+  c.classList.toggle('hasBar', !!S.sel.size);          // espaço p/ a barra fixa não cobrir a última linha
+  wireActionBar(c);
 
   // paleta de stats
   c.querySelectorAll('[data-editstat]').forEach(b=>b.addEventListener('click',()=>openStatModal(b.dataset.editstat)));
   c.querySelector('[data-newstat]')?.addEventListener('click',()=>openStatModal(null));
 
-  // tiles
+  // tiles (limpos: clique amplia, círculo seleciona, ações vão pra barra)
   c.querySelectorAll('.tile').forEach(t=>{
-    const name=t.dataset.name; const im=S.images.find(x=>x.name===name);
-    // clique na imagem -> abre visualizador (mas não quando o clique é o fim de um arraste)
+    const name=t.dataset.name;
     t.addEventListener('click',e=>{
-      if(e.target.closest('[data-selbox]')||e.target.closest('[data-del]')||e.target.closest('[data-idx]')||e.target.closest('[data-stx]')||e.target.closest('[data-txt]')||e.target.closest('[data-mus]'))return;
+      if(e.target.closest('[data-selbox]')||e.target.closest('[data-idx]'))return;
       if(dndBlocksClick())return;
       openLightbox(S.viewList,name);
     });
-    // stats: clicar abre o popover de anexar; pointerdown não pode virar arraste do tile
-    const stx=t.querySelector('[data-stx]');
-    if(stx){
-      stx.addEventListener('pointerdown',e=>e.stopPropagation());
-      stx.addEventListener('click',e=>{e.stopPropagation();openStatPop(stx,name);});
-    }
-    // textos / narração
-    const tb=t.querySelector('[data-txt]');
-    if(tb){
-      tb.addEventListener('pointerdown',e=>e.stopPropagation());
-      tb.addEventListener('click',e=>{e.stopPropagation();openTextModal(name);});
-    }
-    // música a partir desta foto
-    const mb=t.querySelector('[data-mus]');
-    if(mb){
-      mb.addEventListener('pointerdown',e=>e.stopPropagation());
-      mb.addEventListener('click',e=>{e.stopPropagation();openMusicForPhoto(name);});
-    }
-    // badge de número -> mover para posição (ausente em Rejeitadas)
     const idxEl=t.querySelector('[data-idx]');
     if(idxEl)idxEl.addEventListener('click',e=>{e.stopPropagation();startIdxEdit(idxEl,name);});
-    // círculo -> seleciona
     t.querySelector('[data-selbox]').addEventListener('click',e=>{
       e.stopPropagation();
       if(S.sel.has(name))S.sel.delete(name);else S.sel.add(name);
       renderSequence();
     });
-    // ✕ -> rejeita
-    t.querySelector('[data-del]').addEventListener('click',e=>{
-      e.stopPropagation();
-      if(im.rej)unreject(im);else reject(im);
-      renderSequence();updateCounts();
-    });
-    // arrastar: reordena dentro da visão ou solta num capítulo da barra lateral
     t.addEventListener('pointerdown',e=>{
       if(e.button!==0)return;
-      if(e.target.closest('[data-selbox]')||e.target.closest('[data-del]')||e.target.closest('[data-idx]'))return;
+      if(e.target.closest('[data-selbox]')||e.target.closest('[data-idx]'))return;
       dndPend(e,'tile',name);
     });
   });
 }
+
+// barra de ações fixa embaixo: 1 selecionada = ações da foto; 2+ = ações em lote
+function actionBarHtml(){
+  if(!S.sel.size)return '';
+  const dests=[...S.chapters.map(ch=>({id:ch.id,name:ch.name})),{id:UN,name:'📥 A definir'},{id:REJ,name:'🗑 Rejeitadas'}]
+    .filter(o=>o.id!==S.active)
+    .map(o=>`<option value="${esc(o.id)}">${esc(o.name)}</option>`).join('');
+  const moveSel=`<select class="mini" data-ab-move title="Mover para outro dia"><option value="">↦ Mover para…</option>${dests}</select>`;
+  if(S.sel.size===1){
+    const name=[...S.sel][0]; const im=S.images.find(x=>x.name===name); if(!im)return '';
+    return `<div class="actionBar">
+      <img class="abThumb" src="${im.url}" alt="">
+      <span class="abName" title="${esc(name)}">${esc(name)}</span>
+      <div class="abBtns">
+        <button class="mini" data-ab="expand">⤢ Ampliar</button>
+        <button class="mini" data-ab="text">💬 Textos &amp; cena</button>
+        <button class="mini" data-ab="music">🎵 Música</button>
+        <button class="mini" data-ab="stats">✦ Stats</button>
+        <button class="mini" data-ab="tempo">⏱ Tempo</button>
+        ${moveSel}
+        <button class="mini danger" data-ab="reject">🗑 ${im.rej?'Restaurar':'Rejeitar'}</button>
+      </div>
+      <button class="mini abClose" data-ab="clear" title="Limpar seleção">✕</button>
+    </div>`;
+  }
+  const two=S.sel.size===2;
+  return `<div class="actionBar">
+    <span class="abName">✓ ${S.sel.size} selecionadas</span>
+    <div class="abBtns">
+      ${moveSel}
+      ${S.active!==UN&&S.active!==REJ?'<button class="mini" data-ab="together">↹ Trazer junto</button>':''}
+      ${two&&S.active!==UN&&S.active!==REJ?'<button class="mini" data-ab="compare">⇆ Comparar</button>':''}
+      <button class="mini danger" data-ab="reject">🗑 Rejeitar sel.</button>
+    </div>
+    <button class="mini abClose" data-ab="clear" title="Limpar seleção">✕</button>
+  </div>`;
+}
+function wireActionBar(c){
+  const bar=c.querySelector('.actionBar'); if(!bar)return;
+  const one=S.sel.size===1?[...S.sel][0]:null;
+  bar.querySelector('[data-ab-move]')?.addEventListener('change',e=>{ const d=e.target.value; if(d)moveToChapter([...S.sel],d); });
+  bar.querySelectorAll('[data-ab]').forEach(b=>b.addEventListener('click',()=>{
+    const a=b.dataset.ab;
+    if(a==='clear'){S.sel.clear();renderSequence();}
+    else if(a==='expand'&&one)openLightbox(S.viewList,one);
+    else if(a==='text'&&one)openTextModal(one);
+    else if(a==='music'&&one)openMusicForPhoto(one);
+    else if(a==='stats'&&one)openStatPop(b,one);
+    else if(a==='tempo'&&one)openTempoPop(b,one);
+    else if(a==='together')bringTogether();
+    else if(a==='compare')openCompare();
+    else if(a==='reject'){
+      if(one){const im=S.images.find(x=>x.name===one); if(im){im.rej?unreject(im):reject(im);} renderSequence();updateCounts();}
+      else{S.images.filter(i=>S.sel.has(i.name)).forEach(reject);S.sel.clear();renderSequence();updateCounts();}
+    }
+  }));
+}
+// popover de tempo por foto (multiplicador sobre o ritmo automático)
+function openTempoPop(anchor,name){
+  closeStatPop();
+  const im=S.images.find(x=>x.name===name); if(!im)return;
+  const cur=im.pace||1;
+  const opts=[[0.55,'Rápido'],[1,'Normal'],[1.7,'Devagar'],[2.6,'Bem devagar']];
+  const p=el('div','statPop'); statPopEl=p;
+  p.innerHTML='<h5>Tempo desta foto no Relembrar</h5>';
+  opts.forEach(([v,label])=>{
+    const row=el('button','tempoOpt'+(cur===v?' on':''));
+    row.textContent=label;
+    row.onclick=()=>{ im.pace=(v===1?null:v); save(); closeStatPop(); renderSequence(); toast('Tempo: '+label); };
+    p.appendChild(row);
+  });
+  document.body.appendChild(p);
+  const r=anchor.getBoundingClientRect(), pw=p.offsetWidth, ph=p.offsetHeight;
+  let left=Math.min(r.left, innerWidth-8-pw), top=r.top-ph-8; if(top<8)top=r.bottom+8;
+  p.style.left=Math.max(8,left)+'px'; p.style.top=top+'px';
+  setTimeout(()=>document.addEventListener('pointerdown',statPopOutside,true),0);
+}
+function globalPace(){ const v=parseFloat(localStorage.getItem('rcPace')||''); return v>0?v:1; }
+function setGlobalPace(v){ localStorage.setItem('rcPace', String(v)); }
 
 function renderSidebar(){
   const s=$('#side');
@@ -908,7 +946,7 @@ function lbRemoveFromSeq(){
    formato do idb, então importar é só regravar o idb e reaplicar por nome de arquivo. */
 function sessionManifest(){
   const man={};
-  for(const im of S.images) man[im.name]={chap:im.chap,order:im.order,rej:im.rej,taken:im.taken,stats:im.stats,texts:im.texts,cardAfter:im.cardAfter,scene:im.scene,music:im.music};
+  for(const im of S.images) man[im.name]={chap:im.chap,order:im.order,rej:im.rej,taken:im.taken,stats:im.stats,texts:im.texts,cardAfter:im.cardAfter,scene:im.scene,music:im.music,pace:im.pace};
   return man;
 }
 function sessionData(){
@@ -1251,6 +1289,9 @@ function paceOf(i){
   const burst=gPrev!=null&&gPrev<=PACE.burst;
   let hold=3400;
   if(gNext!=null)hold=gNext<=PACE.burst?1500:gNext<=PACE.near?2800:gNext<=PACE.far?4000:6000;
+  // ritmo automático × ajuste do usuário: global (rcPace) e por-foto (im.pace) multiplicam o hold
+  const mult=globalPace()*((cur&&cur.im&&cur.im.pace)||1);
+  hold=Math.round(hold*mult);
   // rajada varre mais curto, mas VARRE: sem isso ela ficava parada e pequena, e num festival quase
   // tudo é rajada — era o que fazia o zoom sumir do show inteiro
   return {burst,hold,scan:burst?RCSECS*.5:RCSECS,breath:gNext!=null&&gNext>PACE.far};
@@ -1332,11 +1373,13 @@ function renderRecall(){
         <button class="primary" id="rcStart">▶ Começar do início</button>
         <label class="ck"><input type="checkbox" id="rcZoomCk"${RC.zoom?' checked':''}> Zoom automático</label>
         <label class="ck"><input type="checkbox" id="rcPlayCk"${RC.play?' checked':''}> Passar sozinho</label>
+        <label class="ck" title="Ritmo geral do slideshow (mais rápido ↔ mais devagar)">Ritmo <input type="range" id="rcPaceR" min="0.5" max="2" step="0.1" value="${globalPace()}" style="width:110px"> <span id="rcPaceLbl" style="font:11px monospace;color:var(--mut);min-width:2.4em">${globalPace().toFixed(1)}×</span></label>
       </div>
     </div>
     <div class="chapCards">${cards}</div>
   </div>`;
   $('#rcStart').onclick=()=>rcOpen(0);
+  $('#rcPaceR').oninput=e=>{ setGlobalPace(+e.target.value); $('#rcPaceLbl').textContent=(+e.target.value).toFixed(1)+'×'; };
   $('#rcZoomCk').onchange=e=>rcZoomSet(e.target.checked);
   $('#rcPlayCk').onchange=e=>{RC.play=e.target.checked;localStorage.setItem('rcPlay',RC.play?'1':'0');};
   c.querySelectorAll('.go[data-chap]:not([disabled])').forEach(b=>b.onclick=()=>{
