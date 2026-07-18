@@ -326,3 +326,25 @@
   .vnPreview{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.9);display:none}
   .vnPreview.show{display:block}
   .vnPreviewClose{position:absolute;top:16px;right:16px;color:#fff;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22)}
+
+  /* ---------- HUD capítulo + relógio (canto sup. direito, persistente) ---------- */
+  .rcHud{position:absolute;top:16px;right:18px;z-index:5;text-align:right;color:#fff;pointer-events:none;
+    text-shadow:0 2px 12px rgba(0,0,0,.6),0 1px 3px rgba(0,0,0,.5)}
+  .rcHudCh{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.72);font-weight:600}
+  .rcHudTime{font-size:30px;font-weight:300;font-variant-numeric:tabular-nums;line-height:1.05;margin-top:1px}
+  .rcHudTime.tick{animation:rcHudTick .5s ease}
+  @keyframes rcHudTick{0%{opacity:0;transform:translateY(-5px)}100%{opacity:1;transform:none}}
+  /* o HUD fica; só a barra de controles some no idle (por isso ele não está dentro de .rcTop) */
+
+  /* ---------- CENA: clima (filtro de cor por foto) e flash ---------- */
+  .rcSlide.mood-warm img,.rcSlide.mood-warm .rcBg{filter:saturate(1.28) sepia(.16) brightness(1.03) hue-rotate(-6deg)}
+  .rcSlide.mood-cold img,.rcSlide.mood-cold .rcBg{filter:saturate(1.06) contrast(1.04) brightness(.99) hue-rotate(14deg)}
+  .rcSlide.mood-night img,.rcSlide.mood-night .rcBg{filter:brightness(.66) saturate(.82) contrast(1.06) hue-rotate(6deg)}
+  .rcSlide.mood-bw img,.rcSlide.mood-bw .rcBg{filter:grayscale(1) contrast(1.06)}
+  .rcFlash{position:absolute;inset:0;z-index:4;background:#fff;opacity:0;pointer-events:none}
+  .rcFlash.go{animation:rcFlashAnim .32s ease-out}
+  @keyframes rcFlashAnim{0%{opacity:.85}100%{opacity:0}}
+
+  /* linha "Cena desta foto" no modal */
+  .cenaRow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 16px;padding:8px 10px;background:var(--panel2);border-radius:8px}
+  .cenaRow select{padding:4px 7px;font-size:12px}

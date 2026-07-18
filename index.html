@@ -96,6 +96,7 @@
   <div class="rcStage" id="rcStage"></div>
   <div class="rcVig"></div>
   <div class="rcGrain"></div>
+  <div class="rcFlash" id="rcFlash"></div>
   <button class="rcArrow rcPrev" id="rcPrev" aria-label="Anterior">‹</button>
   <button class="rcArrow rcNext" id="rcNext" aria-label="Próxima">›</button>
   <div class="rcCard" id="rcCard"><span></span></div>
@@ -103,6 +104,7 @@
   <div class="rcStats" id="rcStats"></div>
   <div class="rcVN" id="rcVN"><div class="rcVNinner"><div class="rcVNtext" id="rcVNtext"></div><div class="rcVNhint" id="rcVNhint"></div></div></div>
   <div class="rcFin" id="rcFin"><div><h3 id="rcFinT"></h3><p id="rcFinS"></p></div></div>
+  <div class="rcHud" id="rcHud"><div class="rcHudCh" id="rcHudCh"></div><div class="rcHudTime" id="rcHudTime"></div></div>
   <div class="rcTop">
     <div class="rcCount" id="rcCount"></div>
     <div class="grow"></div>
@@ -141,7 +143,13 @@
       <span id="vnSpeedLbl" style="font:11px monospace;color:var(--mut);min-width:2.6em"></span>
     </label>
   </div>
-  <p style="margin:0 0 16px;color:var(--mut);font-size:12px">Aparecem no Relembrar como visual novel. Selecione trechos pra formatar (negrito, cor, fonte); escolha o efeito de escrita por fala. <kbd>→</kbd> completa/avança. Use <b>▶ Prévia</b> pra ver como fica.</p>
+  <p style="margin:0 0 12px;color:var(--mut);font-size:12px">Aparecem no Relembrar como visual novel. Selecione trechos pra formatar (negrito, cor, fonte); escolha o efeito de escrita por fala. <kbd>→</kbd> completa/avança. Use <b>▶ Prévia</b> pra ver como fica.</p>
+  <div class="cenaRow">
+    <span class="fLbl" style="margin:0 4px 0 0">Cena desta foto</span>
+    <select id="cenaFx" title="Transição de entrada no Relembrar"><option value="crossfade">Crossfade</option><option value="black">Através do preto</option><option value="cut">Corte seco</option><option value="flash">Flash</option></select>
+    <select id="cenaMood" title="Clima / cor da imagem"><option value="">Cor normal</option><option value="warm">Quente</option><option value="cold">Frio</option><option value="night">Noite</option><option value="bw">P&amp;B</option></select>
+    <select id="cenaHold" title="Segurar mais tempo — respiro / suspense"><option value="0">Ritmo normal</option><option value="1">Segurar +</option><option value="2">Segurar ++</option></select>
+  </div>
   <div style="margin-bottom:18px">
     <label class="fLbl">Falas sobre esta foto</label>
     <div id="textOver"></div>

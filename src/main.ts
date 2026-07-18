@@ -27,7 +27,7 @@ async function idbSet(k,v){const db=await idb();return new Promise((res,rej)=>{c
 let saveTimer=null;
 function save(){clearTimeout(saveTimer);saveTimer=setTimeout(async()=>{
   const man={};
-  for(const im of S.images) man[im.name]={chap:im.chap,order:im.order,rej:im.rej,taken:im.taken,stats:im.stats,texts:im.texts,cardAfter:im.cardAfter};
+  for(const im of S.images) man[im.name]={chap:im.chap,order:im.order,rej:im.rej,taken:im.taken,stats:im.stats,texts:im.texts,cardAfter:im.cardAfter,scene:im.scene};
   await idbSet('manifest',man);
   await idbSet('chapters',S.chapters);
   await idbSet('stats',S.stats);
@@ -71,7 +71,7 @@ async function loadFolder(handle){
     imgs.push({name,handle:ent,url:URL.createObjectURL(file),
       chap:(m.chap!==undefined)?m.chap:null, order:(m.order!==undefined)?m.order:null,
       rej:!!m.rej, hash:null, taken:m.taken, stats:m.stats||{},
-      texts:m.texts||[], cardAfter:m.cardAfter||[]});   // undefined = ainda não lido; 0 = lido, sem data
+      texts:m.texts||[], cardAfter:m.cardAfter||[], scene:m.scene||{}});   // undefined = ainda não lido; 0 = lido, sem data
   }
   imgs.sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));
   imgs.forEach((im,i)=>{if(im.order==null)im.order=i;}); // semeia ordem por nome p/ imagens sem manifesto
@@ -299,6 +299,10 @@ function openTextModal(name){
   im.texts=(im.texts||[]).map(normalizeFala);       // migra falas legadas p/ o formato rico
   im.cardAfter=(im.cardAfter||[]).map(normalizeFala);
   $('#textModalT').textContent='Textos — '+name;
+  const sc=im.scene||{};                              // sincroniza a linha "Cena desta foto"
+  $('#cenaFx').value=sc.fx||'crossfade';
+  $('#cenaMood').value=sc.mood||'';
+  $('#cenaHold').value=String(sc.hold||0);
   syncVnSpeed();
   renderFalaCards('#textOver', im.texts);
   renderFalaCards('#textCard', im.cardAfter);
@@ -883,7 +887,7 @@ function lbRemoveFromSeq(){
    formato do idb, então importar é só regravar o idb e reaplicar por nome de arquivo. */
 function sessionManifest(){
   const man={};
-  for(const im of S.images) man[im.name]={chap:im.chap,order:im.order,rej:im.rej,taken:im.taken,stats:im.stats,texts:im.texts,cardAfter:im.cardAfter};
+  for(const im of S.images) man[im.name]={chap:im.chap,order:im.order,rej:im.rej,taken:im.taken,stats:im.stats,texts:im.texts,cardAfter:im.cardAfter,scene:im.scene};
   return man;
 }
 function sessionData(){
@@ -1225,7 +1229,7 @@ function closeOf(i){
 function rcAuto(){
   clearTimeout(RC.autoT);
   if(!RC.play||RC.paused||RC.inspect||RC.statPending||RC.vnPending||RC.phase!=='rest')return;
-  const ms=(RC.pace&&RC.pace.hold)||2200;
+  const ms=((RC.pace&&RC.pace.hold)||2200)+(RC.sceneHold||0);   // respiro extra da cena / através do preto
   RC.autoT=setTimeout(()=>{
     if(!RC.play||RC.paused||RC.inspect)return;
     if(RC.i>=RC.list.length-1)rcEnd(); else rcNav(1);
@@ -1316,12 +1320,24 @@ function rcOpen(i){
   const sb=$('#rcStats'); sb.classList.remove('on'); sb.innerHTML='';
   const bb=$('#rcStatBig'); bb.classList.remove('on'); bb.innerHTML='';
   RC.vnHidden=false; rcVNClear(); $('#rcVN').classList.remove('hidden'); // zera as falas da sessão
+  RC.hudTime=''; RC.sceneHold=0; $('#rcHudCh').textContent=''; $('#rcHudTime').textContent=''; // zera o relógio da sessão
   $('#rc').classList.add('show');
   MUS.ch=null; musApplyVol();      // este clique é o gesto que libera o autoplay do áudio
   rcZoomApply();                                     // sem slide em cena: só acerta o botão e a classe
   rcShow(); rcWake();
   document.documentElement.requestFullscreen?.().catch(()=>{}); // gesto do usuário — o Chrome permite
 }
+// HUD persistente: capítulo em cima, relógio embaixo. Sem EXIF, mantém a última hora conhecida.
+function rcHud(chName, taken){
+  $('#rcHudCh').textContent=chName||'';
+  if(taken)RC.hudTime=fmtHour(taken);
+  const el=$('#rcHudTime'), now=RC.hudTime||'';
+  if(el.textContent!==now){                           // mudou de hora entre fotos: micro-tick
+    el.textContent=now;
+    el.classList.remove('tick'); void el.offsetWidth; el.classList.add('tick');
+  }
+}
+function rcFlash(){ const f=$('#rcFlash'); if(!f)return; f.classList.remove('go'); void f.offsetWidth; f.classList.add('go'); }
 function rcShow(){
   rcVNClear();                                        // beat novo: encerra qualquer fala pendente
   if(RC.list[RC.i]&&RC.list[RC.i].card)return rcShowCard();
@@ -1331,25 +1347,37 @@ function rcShow(){
   RC.inspect=false; RC.phase='load'; RC.hold=0; RC.paused=false; RC.m=1;
   RC.sc=RC.tSc=1; RC.tx=RC.tTx=0; RC.ty=RC.tTy=0;
   RC.pace=paceOf(RC.i); RC.secs=RC.pace.scan||RCSECS; RC.close=closeOf(RC.i);
+  const scene=im.scene||{};                           // tom da cena: transição, clima, respiro
+  RC.sceneHold=(scene.fx==='black'?1200:0)+(scene.hold?scene.hold*1600:0);
   $('#rc').classList.remove('zoomed');
   rcPlayBtn();
 
-  // cada foto é um slide próprio (fundo + imagem) que entra em crossfade sobre o anterior
+  // cada foto é um slide próprio (fundo + imagem) que entra sobre o anterior
   const s=document.createElement('div');
-  s.className='rcSlide pan kb'+((RC.i%4)+1);
+  s.className='rcSlide pan kb'+((RC.i%4)+1)+(scene.mood?' mood-'+scene.mood:'');
   const bg=document.createElement('div'); bg.className='rcBg';
   const img=document.createElement('img'); img.alt='';
   s.append(bg,img);
   $('#rcStage').appendChild(s);
   const old=RC.slide; RC.slide=s;
+  // transição por foto: crossfade (padrão) · corte seco · através do preto · flash
+  const fxKind=scene.fx||'crossfade';
   // buraco de horas na linha do tempo: a virada demora mais, como quem respira entre um lugar e outro
-  const fade=RC.pace.breath?1500:500;
+  let fade=RC.pace.breath?1500:500;
+  if(fxKind==='cut')fade=60;
   s.style.transitionDuration=fade+'ms';
-  if(old)old.style.transitionDuration=fade+'ms';
-  requestAnimationFrame(()=>{
-    s.classList.add('in');
-    if(old){old.classList.remove('in'); setTimeout(()=>old.remove(),fade+80);}
-  });
+  if(old)old.style.transitionDuration=(fxKind==='black'?600:fade)+'ms';
+  if(fxKind==='black'){
+    // o slide velho sai primeiro; o novo entra depois de um respiro no preto (revelação)
+    if(old){old.classList.remove('in'); setTimeout(()=>old.remove(),640);}
+    setTimeout(()=>{ if(RC.slide===s)s.classList.add('in'); }, 640+700);
+  }else{
+    requestAnimationFrame(()=>{
+      s.classList.add('in');
+      if(old){old.classList.remove('in'); setTimeout(()=>old.remove(),fade+80);}
+    });
+    if(fxKind==='flash')rcFlash();
+  }
   // a foto só tem tamanho depois de carregar — antes disso não há o que medir nem enquadrar
   const enter=()=>{
     if(RC.slide!==s)return;                           // já trocou de foto enquanto esta carregava
@@ -1375,13 +1403,9 @@ function rcShow(){
     img.src=rec.url;
   }).catch(()=>{if(RC.slide===s){bg.style.backgroundImage=`url("${im.url}")`;img.src=im.url;}});
 
-  const ims=inChap(ch.id), pos=ims.findIndex(x=>x.name===im.name)+1;
-  $('#rcTitle').textContent=ch.name;
-  // a hora real no lugar do IMG_2049.jpg: o nome do arquivo não diz nada, "22:47" devolve a noite
-  $('#rcSub').textContent=im.taken
-    ? `${fmtHour(im.taken)} · ${fmtDay(im.taken)}`
-    : `${pos} de ${ims.length} neste capítulo`;
   $('#rcCount').textContent=`${RC.i+1} / ${RC.list.length}`;
+  rcHud(ch.name, im.taken);                            // capítulo + relógio no canto sup. direito
+  $('#rcTitle').textContent=''; $('#rcSub').textContent='';  // info subiu pro HUD; rodapé só progresso
   rcBar();
   if(RC.lastChap!==ch.id){
     RC.lastChap=ch.id;
@@ -1516,8 +1540,9 @@ function rcShowCard(){
   cancelAnimationFrame(RC.raf); RC.raf=0; clearTimeout(RC.autoT);
   RC.inspect=false; RC.phase='rest'; RC.hold=0; RC.paused=false; RC.m=1;
   RC.statPending=false; clearTimeout(RC.statDT);
-  RC.pace={hold:1200,scan:0,breath:true}; RC.scannable=false;
+  RC.pace={hold:1200,scan:0,breath:true}; RC.scannable=false; RC.sceneHold=0;
   RC.sc=RC.tSc=1; RC.tx=RC.tTx=0; RC.ty=RC.tTy=0;
+  rcHud(beat.ch?beat.ch.name:'', null);               // mantém capítulo e a última hora no HUD
   $('#rc').classList.remove('zoomed'); rcPlayBtn();
   const s=el('div','rcSlide'); s.style.background='#000';
   $('#rcStage').appendChild(s);
@@ -1973,6 +1998,10 @@ $('#textOverAdd').onclick=()=>addTextRow('over');
 $('#textCardAdd').onclick=()=>addTextRow('card');
 $('#textDone').onclick=closeTextModal;
 $('#vnSpeed').oninput=(e)=>{ setGlobalSpeed(+e.target.value); syncVnSpeed(); };
+function currentTextIm(){ return S.images.find(x=>x.name===textEditName); }
+$('#cenaFx').onchange=(e)=>{const im=currentTextIm(); if(im){im.scene=im.scene||{}; im.scene.fx=e.target.value; save();}};
+$('#cenaMood').onchange=(e)=>{const im=currentTextIm(); if(im){im.scene=im.scene||{}; im.scene.mood=e.target.value; save();}};
+$('#cenaHold').onchange=(e)=>{const im=currentTextIm(); if(im){im.scene=im.scene||{}; im.scene.hold=+e.target.value; save();}};
 $('#vnPreview').onclick=previewSkip;                 // clicar na prévia: pula/fecha
 $('#vnPreviewClose').onclick=(e)=>{e.stopPropagation();closePreview();};
 document.querySelectorAll('.modal').forEach(m=>m.addEventListener('click',e=>{
