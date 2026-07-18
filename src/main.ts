@@ -482,7 +482,6 @@ function actionBarHtml(){
         <button class="mini" data-ab="music">🎵 Música</button>
         <button class="mini" data-ab="stats">✦ Stats</button>
         <button class="mini" data-ab="tempo">⏱ Tempo</button>
-        <button class="mini" data-ab="hora">🕐 Hora</button>
         ${moveSel}
         <button class="mini danger" data-ab="reject">🗑 ${im.rej?'Restaurar':'Rejeitar'}</button>
       </div>
@@ -513,7 +512,6 @@ function wireActionBar(c){
     else if(a==='music'&&one)openMusicForPhoto(one);
     else if(a==='stats'&&one)openStatPop(b,one);
     else if(a==='tempo'&&one)openTempoPop(b,one);
-    else if(a==='hora'&&one)openHoraPop(b,one);
     else if(a==='together')bringTogether();
     else if(a==='compare')openCompare();
     else if(a==='reject'){
@@ -545,41 +543,6 @@ function openTempoPop(anchor,name){
 function globalPace(){ const v=parseFloat(localStorage.getItem('rcPace')||''); return v>0?v:1; }
 function setGlobalPace(v){ localStorage.setItem('rcPace', String(v)); }
 
-// popover de horário: edita im.taken (a hora mostrada no HUD e usada no ritmo por EXIF)
-function openHoraPop(anchor,name){
-  closeStatPop();
-  const im=S.images.find(x=>x.name===name); if(!im)return;
-  const d=im.taken?new Date(im.taken):null;
-  const pad=n=>String(n).padStart(2,'0');
-  const dateVal=d?`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`:'';
-  const timeVal=d?`${pad(d.getHours())}:${pad(d.getMinutes())}`:'';
-  const p=el('div','statPop'); statPopEl=p; p.style.width='210px';
-  p.innerHTML=`<h5>Horário desta foto</h5>
-    <label class="fLbl">Data</label><input type="date" class="fIn" id="horaDate" value="${dateVal}">
-    <label class="fLbl" style="margin-top:8px">Hora</label><input type="time" class="fIn" id="horaTime" value="${timeVal}">
-    <div style="display:flex;gap:6px;margin-top:12px">
-      <button class="mini" id="horaClear" title="Volta a não ter hora">Limpar</button>
-      <span style="flex:1"></span>
-      <button class="mini primary" id="horaSave">Salvar</button>
-    </div>
-    <p style="margin:8px 2px 0;color:var(--dim);font-size:11px">Vem do EXIF; edite se faltar ou estiver errado.</p>`;
-  document.body.appendChild(p);
-  ['horaDate','horaTime'].forEach(id=>p.querySelector('#'+id).addEventListener('keydown',e=>e.stopPropagation()));
-  p.querySelector('#horaSave').onclick=()=>{
-    const dv=p.querySelector('#horaDate').value, tv=p.querySelector('#horaTime').value;
-    if(!tv){ toast('Escolha uma hora.'); return; }
-    const base=dv||dateVal||new Date().toISOString().slice(0,10);
-    const ts=new Date(base+'T'+tv).getTime();
-    if(isNaN(ts)){ toast('Data/hora inválida.'); return; }
-    im.taken=ts; save(); closeStatPop(); renderSequence(); toast('Horário: '+fmtHour(ts));
-  };
-  p.querySelector('#horaClear').onclick=()=>{ im.taken=0; save(); closeStatPop(); renderSequence(); toast('Horário removido.'); };
-  const r=anchor.getBoundingClientRect(), pw=p.offsetWidth, ph=p.offsetHeight;
-  let left=Math.min(r.left, innerWidth-8-pw), top=r.top-ph-8; if(top<8)top=r.bottom+8;
-  p.style.left=Math.max(8,left)+'px'; p.style.top=top+'px';
-  setTimeout(()=>document.addEventListener('pointerdown',statPopOutside,true),0);
-}
-
 function renderSidebar(){
   const s=$('#side');
   let h='<h4>Capítulos</h4><div id="chapList">';
@@ -589,6 +552,7 @@ function renderSidebar(){
       <span class="drag" data-chapdrag title="Arraste para reordenar">⠿</span>
       <span class="nm" title="${esc(ch.name)} — duplo clique para renomear">${esc(ch.name)}</span>
       <span class="n">${n}</span>
+      <button class="x${ch.timeStart!=null?' set':''}" data-timechap title="Hora de início e velocidade do tempo">🕐</button>
       <button class="x" data-editchap title="Renomear (ou duplo clique no nome)">✎</button>
       <button class="x" data-delchap title="Remover capítulo">✕</button></div>`;
   });
@@ -612,6 +576,7 @@ function renderSidebar(){
     if(id!==UN&&id!==REJ){
       row.querySelector('.nm').addEventListener('dblclick',ev=>{ev.stopPropagation();editChap(id);});
       row.querySelector('[data-editchap]').addEventListener('click',ev=>{ev.stopPropagation();editChap(id);});
+      row.querySelector('[data-timechap]').addEventListener('click',ev=>{ev.stopPropagation();openChapTimePop(ev.currentTarget,id);});
       row.querySelector('[data-delchap]').addEventListener('click',ev=>{ev.stopPropagation();delChap(id);});
       row.querySelector('[data-chapdrag]').addEventListener('pointerdown',ev=>{
         if(ev.button!==0)return; ev.stopPropagation(); dndPend(ev,'chap',id);});
@@ -641,6 +606,57 @@ function editChap(id){
   inp.addEventListener('blur',()=>finish(true));
   inp.addEventListener('pointerdown',e=>e.stopPropagation());
   inp.addEventListener('click',e=>e.stopPropagation());
+}
+
+/* ---------- RELÓGIO SINTÉTICO POR CAPÍTULO ----------
+   Em vez do EXIF, cada capítulo tem hora de início (ch.timeStart, min desde 0h) e velocidade
+   (ch.timeStep, min por foto). A hora de uma foto = start + (posição no capítulo) × step. Assim,
+   escolhendo a hora da 1ª foto e o passo, a hora da última bate com o conteúdo dela. */
+const CLOCK_DEFAULT_START=14*60;   // 14:00
+const CLOCK_DEFAULT_STEP=4;        // 4 min por foto
+function fmtMin(total){ const m=((Math.round(total)%1440)+1440)%1440; return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0'); }
+function parseHHMM(s){ const m=/^(\d{1,2}):(\d{2})$/.exec(s||''); if(!m)return null; const h=+m[1],mm=+m[2]; if(h>23||mm>59)return null; return h*60+mm; }
+// hora (string HH:MM) de uma foto: sintética se o capítulo tiver timeStart; senão cai no EXIF/última
+function photoClock(im,ch){
+  if(ch&&ch.timeStart!=null){
+    const ims=inChap(ch.id); const pos=Math.max(0,ims.findIndex(x=>x.name===im.name));
+    return fmtMin(ch.timeStart + pos*(ch.timeStep??CLOCK_DEFAULT_STEP));
+  }
+  return im.taken?fmtHour(im.taken):'';
+}
+function openChapTimePop(anchor,id){
+  closeStatPop();
+  const ch=S.chapters.find(c=>c.id===id); if(!ch)return;
+  const nfotos=inChap(ch.id).length;
+  const p=el('div','statPop'); statPopEl=p; p.style.width='250px';
+  const draw=()=>{
+    const start=ch.timeStart??CLOCK_DEFAULT_START, step=ch.timeStep??CLOCK_DEFAULT_STEP;
+    const last=nfotos>1?fmtMin(start+(nfotos-1)*step):fmtMin(start);
+    p.innerHTML=`<h5>Tempo do capítulo · ${nfotos} foto${nfotos===1?'':'s'}</h5>
+      <label class="fLbl">Hora da 1ª foto</label>
+      <input type="time" class="fIn" id="ctStart" value="${fmtMin(start)}">
+      <label class="fLbl" style="margin-top:8px">Velocidade do tempo <span style="color:var(--mut);font-weight:400;text-transform:none;letter-spacing:0">${step} min/foto</span></label>
+      <input type="range" id="ctStep" min="0" max="30" step="0.5" value="${step}" style="width:100%">
+      <div class="ctReadout">1ª <b>${fmtMin(start)}</b> → última <b>${last}</b></div>
+      <div style="display:flex;gap:6px;margin-top:10px">
+        <button class="mini" id="ctClear" title="Volta ao relógio padrão">Limpar</button>
+        <span style="flex:1"></span>
+        <button class="mini primary" id="ctSave">Salvar</button>
+      </div>`;
+    p.querySelector('#ctStart').addEventListener('keydown',e=>e.stopPropagation());
+    p.querySelector('#ctStart').oninput=e=>{ const v=parseHHMM(e.target.value); if(v!=null){ch.timeStart=v;
+      const st=ch.timeStep??CLOCK_DEFAULT_STEP; const lt=nfotos>1?fmtMin(v+(nfotos-1)*st):fmtMin(v);
+      p.querySelector('.ctReadout').innerHTML=`1ª <b>${fmtMin(v)}</b> → última <b>${lt}</b>`; } };
+    p.querySelector('#ctStep').oninput=e=>{ ch.timeStep=+e.target.value; ch.timeStart=ch.timeStart??CLOCK_DEFAULT_START; draw(); };
+    p.querySelector('#ctSave').onclick=()=>{ ch.timeStart=ch.timeStart??CLOCK_DEFAULT_START; ch.timeStep=ch.timeStep??CLOCK_DEFAULT_STEP; save(); closeStatPop(); renderSidebar(); toast('Tempo do capítulo salvo.'); };
+    p.querySelector('#ctClear').onclick=()=>{ delete ch.timeStart; delete ch.timeStep; save(); closeStatPop(); renderSidebar(); toast('Capítulo volta ao relógio padrão.'); };
+  };
+  draw();
+  document.body.appendChild(p);
+  const r=anchor.getBoundingClientRect(), pw=p.offsetWidth, ph=p.offsetHeight;
+  let left=Math.min(r.right, innerWidth-8-pw), top=r.bottom+6; if(top+ph>innerHeight-8)top=Math.max(8,r.top-ph-6);
+  p.style.left=Math.max(8,left)+'px'; p.style.top=top+'px';
+  setTimeout(()=>document.addEventListener('pointerdown',statPopOutside,true),0);
 }
 /* remove um capítulo; as fotos dele voltam para “A definir” (arquivos não são tocados) */
 function delChap(id){
@@ -1158,7 +1174,15 @@ const fmtDay=ts=>ts?new Date(ts).toLocaleDateString('pt-BR',{weekday:'long',day:
 const fmtSecs=s=>{s=Math.max(0,Math.round(s));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');};
 /* intervalo de horas do capítulo, para a cartela: "14:20 → 03:40" */
 function chapSpan(chId){
-  const t=inChap(chId).map(i=>i.taken).filter(Boolean);
+  const ch=S.chapters.find(c=>c.id===chId);
+  const ims=inChap(chId);
+  if(ch&&ch.timeStart!=null){                          // relógio sintético: 1ª → última pela contagem de fotos
+    if(!ims.length)return '';
+    const step=ch.timeStep??CLOCK_DEFAULT_STEP, start=ch.timeStart;
+    const last=start+(ims.length-1)*step;
+    return fmtMin(start)+(ims.length>1?' → '+fmtMin(last):'');
+  }
+  const t=ims.map(i=>i.taken).filter(Boolean);
   if(!t.length)return '';
   const a=Math.min(...t), b=Math.max(...t);
   return fmtHour(a)+(b-a>60000?' → '+fmtHour(b):'');
@@ -1443,9 +1467,9 @@ function rcOpen(i){
   document.documentElement.requestFullscreen?.().catch(()=>{}); // gesto do usuário — o Chrome permite
 }
 // HUD persistente: capítulo em cima, relógio embaixo. Sem EXIF, mantém a última hora conhecida.
-function rcHud(chName, taken){
+function rcHud(chName, hour){
   $('#rcHudCh').textContent=chName||'';
-  if(taken)RC.hudTime=fmtHour(taken);
+  if(hour)RC.hudTime=hour;                             // hora já formatada (photoClock); sem hora, mantém a última
   const el=$('#rcHudTime'), now=RC.hudTime||'';
   if(el.textContent!==now){                           // mudou de hora entre fotos: micro-tick
     el.textContent=now;
@@ -1519,7 +1543,7 @@ function rcShow(){
   }).catch(()=>{if(RC.slide===s){bg.style.backgroundImage=`url("${im.url}")`;img.src=im.url;}});
 
   $('#rcCount').textContent=`${RC.i+1} / ${RC.list.length}`;
-  rcHud(ch.name, im.taken);                            // capítulo + relógio no canto sup. direito
+  rcHud(ch.name, photoClock(im,ch));                   // capítulo + relógio sintético no canto sup. direito
   $('#rcTitle').textContent=''; $('#rcSub').textContent='';  // info subiu pro HUD; rodapé só progresso
   rcBar();
   if(RC.lastChap!==ch.id){
