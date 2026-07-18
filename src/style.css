@@ -288,6 +288,9 @@
   .tile .txtBtn{position:absolute;top:4px;left:50%;transform:translateX(-50%);height:20px;padding:0 8px;border-radius:10px;background:rgba(0,0,0,.55);color:#fff;border:0;font-size:12px;display:none;align-items:center;gap:3px;cursor:pointer;line-height:1;z-index:2}
   .tile:hover .txtBtn{display:inline-flex}
   .tile .txtBtn.has{display:inline-flex;background:rgba(91,140,255,.8)}
+  .tile .musBtn{position:absolute;top:4px;right:28px;height:20px;padding:0 5px;border-radius:10px;background:rgba(0,0,0,.55);color:#fff;border:0;font-size:11px;display:none;align-items:center;cursor:pointer;line-height:1;z-index:2}
+  .tile:hover .musBtn{display:inline-flex}
+  .tile .musBtn.has{display:inline-flex;background:rgba(78,203,141,.85)}
   /* dialog box no Recall: gradiente BEM leve só pra legibilidade, sem caixa dura */
   .rcVN{position:absolute;left:0;right:0;bottom:0;z-index:5;display:none;padding:0 0 clamp(70px,12vh,120px);pointer-events:none;
     background:linear-gradient(to top,rgba(0,0,0,.62) 0%,rgba(0,0,0,.34) 34%,rgba(0,0,0,.08) 66%,transparent 100%)}

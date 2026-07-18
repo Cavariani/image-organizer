@@ -27,7 +27,7 @@ async function idbSet(k,v){const db=await idb();return new Promise((res,rej)=>{c
 let saveTimer=null;
 function save(){clearTimeout(saveTimer);saveTimer=setTimeout(async()=>{
   const man={};
-  for(const im of S.images) man[im.name]={chap:im.chap,order:im.order,rej:im.rej,taken:im.taken,stats:im.stats,texts:im.texts,cardAfter:im.cardAfter,scene:im.scene};
+  for(const im of S.images) man[im.name]={chap:im.chap,order:im.order,rej:im.rej,taken:im.taken,stats:im.stats,texts:im.texts,cardAfter:im.cardAfter,scene:im.scene,music:im.music};
   await idbSet('manifest',man);
   await idbSet('chapters',S.chapters);
   await idbSet('stats',S.stats);
@@ -71,11 +71,12 @@ async function loadFolder(handle){
     imgs.push({name,handle:ent,url:URL.createObjectURL(file),
       chap:(m.chap!==undefined)?m.chap:null, order:(m.order!==undefined)?m.order:null,
       rej:!!m.rej, hash:null, taken:m.taken, stats:m.stats||{},
-      texts:m.texts||[], cardAfter:m.cardAfter||[], scene:m.scene||{}});   // undefined = ainda não lido; 0 = lido, sem data
+      texts:m.texts||[], cardAfter:m.cardAfter||[], scene:m.scene||{}, music:m.music||null});   // undefined = ainda não lido; 0 = lido, sem data
   }
   imgs.sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));
   imgs.forEach((im,i)=>{if(im.order==null)im.order=i;}); // semeia ordem por nome p/ imagens sem manifesto
   S.images=imgs; S.sel.clear();
+  migrateMusic();   // música por-capítulo (modelo antigo) vira um ponto na 1ª foto de cada dia
   // abre a triagem na 1ª "a definir" (cai direto nas fotos recém-adicionadas); 0 se não houver
   const firstUndef=imgs.findIndex(i=>!i.rej&&i.chap===null);
   S.tIdx=firstUndef>=0?firstUndef:0;
@@ -84,6 +85,19 @@ async function loadFolder(handle){
   $('#btnSave').style.display=''; $('#btnRestore').style.display='';
   render();
   scanExif();   // em segundo plano: a hora real de cada foto é o que dá ritmo ao Relembrar
+}
+
+// migra o modelo antigo (chapter.music) para pontos por-foto: a faixa do dia começa na 1ª foto dele
+function migrateMusic(){
+  let changed=false;
+  for(const ch of S.chapters){
+    if(ch.music){
+      const ims=inChap(ch.id);
+      if(ims.length && !ims[0].music) ims[0].music=ch.music;
+      delete ch.music; changed=true;
+    }
+  }
+  if(changed)save();
 }
 
 /* ---------- ações ---------- */
@@ -419,6 +433,7 @@ function renderSequence(){
         <button class="del" data-del title="Rejeitar (tira da sequência)">✕</button>
         <span class="rejbadge">rej</span>
         <button class="txtBtn${((im.texts&&im.texts.length)||(im.cardAfter&&im.cardAfter.length))?' has':''}" data-txt title="Textos / narração">💬${(im.texts&&im.texts.length)?' '+im.texts.length:''}${(im.cardAfter&&im.cardAfter.length)?' ▦':''}</button>
+        <button class="musBtn${im.music&&im.music.file?' has':''}" data-mus title="Música a partir desta foto">🎵</button>
         <div class="stx" data-stx>${statBadgesHTML(im)}<button class="stAdd" data-stadd title="Adicionar stat">＋</button></div>
       </div>`;
     });
@@ -444,7 +459,7 @@ function renderSequence(){
     const name=t.dataset.name; const im=S.images.find(x=>x.name===name);
     // clique na imagem -> abre visualizador (mas não quando o clique é o fim de um arraste)
     t.addEventListener('click',e=>{
-      if(e.target.closest('[data-selbox]')||e.target.closest('[data-del]')||e.target.closest('[data-idx]')||e.target.closest('[data-stx]')||e.target.closest('[data-txt]'))return;
+      if(e.target.closest('[data-selbox]')||e.target.closest('[data-del]')||e.target.closest('[data-idx]')||e.target.closest('[data-stx]')||e.target.closest('[data-txt]')||e.target.closest('[data-mus]'))return;
       if(dndBlocksClick())return;
       openLightbox(S.viewList,name);
     });
@@ -459,6 +474,12 @@ function renderSequence(){
     if(tb){
       tb.addEventListener('pointerdown',e=>e.stopPropagation());
       tb.addEventListener('click',e=>{e.stopPropagation();openTextModal(name);});
+    }
+    // música a partir desta foto
+    const mb=t.querySelector('[data-mus]');
+    if(mb){
+      mb.addEventListener('pointerdown',e=>e.stopPropagation());
+      mb.addEventListener('click',e=>{e.stopPropagation();openMusicForPhoto(name);});
     }
     // badge de número -> mover para posição (ausente em Rejeitadas)
     const idxEl=t.querySelector('[data-idx]');
@@ -887,7 +908,7 @@ function lbRemoveFromSeq(){
    formato do idb, então importar é só regravar o idb e reaplicar por nome de arquivo. */
 function sessionManifest(){
   const man={};
-  for(const im of S.images) man[im.name]={chap:im.chap,order:im.order,rej:im.rej,taken:im.taken,stats:im.stats,texts:im.texts,cardAfter:im.cardAfter,scene:im.scene};
+  for(const im of S.images) man[im.name]={chap:im.chap,order:im.order,rej:im.rej,taken:im.taken,stats:im.stats,texts:im.texts,cardAfter:im.cardAfter,scene:im.scene,music:im.music};
   return man;
 }
 function sessionData(){
@@ -1072,19 +1093,36 @@ function chapSpan(chId){
    O arquivo vai para _musica/ dentro da pasta do usuário (ele já deu permissão de escrita, e é o
    mesmo espírito do _sessao.json): a trilha viaja junto com as fotos e toca offline, sem upload
    pra lugar nenhum. Em S.chapters fica só a referência {file,start}. */
-const MUS={cur:null,ch:null,urls:new Map(),
+// Música por PONTO/foto: im.music={file,start} = "a partir desta foto, toque X". A faixa ativa num
+// beat é o último ponto de música <= posição atual (continua entre dias até o próximo ponto).
+// MUS.key = nome da foto dona do ponto tocando; MUS.urls indexa por nome de arquivo (dedupe).
+const MUS={cur:null,key:null,urls:new Map(),
   vol:Math.min(1,Math.max(0,+(localStorage.getItem('rcVol')??.8))),
   muted:localStorage.getItem('rcMute')==='1'};
 const musVol=()=>MUS.muted?0:MUS.vol;
-async function musUrl(ch){
-  if(!ch||!ch.music)return null;
-  if(MUS.urls.has(ch.id))return MUS.urls.get(ch.id);
+async function musUrl(file){
+  if(!file)return null;
+  if(MUS.urls.has(file))return MUS.urls.get(file);
   try{
     const dir=await S.dir.getDirectoryHandle('_musica');
-    const fh=await dir.getFileHandle(ch.music.file);
+    const fh=await dir.getFileHandle(file);
     const url=URL.createObjectURL(await fh.getFile());
-    MUS.urls.set(ch.id,url); return url;
+    MUS.urls.set(file,url); return url;
   }catch(e){return null;}
+}
+// ponto de música ativo na posição i: o último beat de foto (<= i) que define im.music
+function activeCue(i){
+  for(let k=Math.min(i,RC.list.length-1);k>=0;k--){
+    const b=RC.list[k];
+    if(b&&b.im&&b.im.music&&b.im.music.file) return {cue:b.im.music,key:b.im.name};
+  }
+  return null;
+}
+// avalia o ponto ativo neste beat e troca a faixa se mudou (ou silencia se ainda não houve ponto)
+function musSync(i){
+  const ac=activeCue(i);
+  if(ac)musPlayCue(ac.cue,ac.key);
+  else if(MUS.cur)musStop(1.2);
 }
 /* Rampa de volume no relógio de parede, por setInterval — de propósito NÃO em rAF: o rAF congela
    em aba de fundo, e um crossfade travado no meio deixaria a faixa velha tocando baixinho pra
@@ -1104,23 +1142,23 @@ function musFade(a,to,secs,stop){
   a._fi=setInterval(step,30);
   step();
 }
-async function musPlay(ch){
-  if(MUS.ch===ch.id){                       // mesmo capítulo: a faixa continua de onde está
+async function musPlayCue(cue,key){
+  if(MUS.key===key){                        // mesmo ponto: a faixa continua de onde está
     // ...a não ser que a pausa a tenha parado e o usuário tenha saído dela pela seta
     if(MUS.cur&&MUS.cur.paused&&!RC.paused){MUS.cur.play().catch(()=>{});musFade(MUS.cur,musVol(),.6);}
     return;
   }
-  MUS.ch=ch.id;
+  MUS.key=key;
   const old=MUS.cur;
-  const url=await musUrl(ch);
-  if(MUS.ch!==ch.id)return;                 // já trocou de capítulo enquanto o arquivo abria
+  const url=await musUrl(cue.file);
+  if(MUS.key!==key)return;                   // já trocou de ponto enquanto o arquivo abria
   if(old)musFade(old,0,2,true);
   if(!url){MUS.cur=null;return;}
   const a=new Audio(url);
   a.volume=0;
-  a.addEventListener('ended',()=>{a.currentTime=ch.music.start||0;a.play().catch(()=>{});}); // repete a partir do ponto escolhido, não do zero
+  a.addEventListener('ended',()=>{a.currentTime=cue.start||0;a.play().catch(()=>{});}); // repete a partir do ponto escolhido, não do zero
   MUS.cur=a;
-  a.currentTime=ch.music.start||0;
+  a.currentTime=cue.start||0;
   // sem await: a promessa do play() só resolve quando a faixa realmente começa, e esperar por ela
   // faria os primeiros segundos da música tocarem em volume 0 — justo a abertura que ele escolheu
   a.play().catch(()=>{});
@@ -1128,7 +1166,7 @@ async function musPlay(ch){
 }
 function musStop(secs=1.5){
   if(MUS.cur)musFade(MUS.cur,0,secs,true);
-  MUS.cur=null; MUS.ch=null;
+  MUS.cur=null; MUS.key=null;
 }
 function musApplyVol(){
   if(MUS.cur){MUS.cur._f=(MUS.cur._f||0)+1; clearInterval(MUS.cur._fi); MUS.cur.volume=musVol();} // cancela fade em curso
@@ -1136,18 +1174,18 @@ function musApplyVol(){
   const r=$('#rcVol'); if(r)r.value=Math.round(MUS.vol*100);
 }
 
-/* ---------- escolher a faixa e o ponto onde ela começa ---------- */
-let ME={ch:null,file:null,start:0};
-async function openMusic(chId){
-  const ch=S.chapters.find(c=>c.id===chId); if(!ch)return;
-  ME={ch,file:null,start:ch.music?(ch.music.start||0):0};
-  $('#musChap').textContent=ch.name;
-  $('#musName').textContent=ch.music?ch.music.file:'nenhuma faixa ainda';
-  $('#musRemove').style.display=ch.music?'':'none';
+/* ---------- escolher a faixa e o ponto onde ela começa (por FOTO) ---------- */
+let ME={name:null,file:null,start:0};
+async function openMusicForPhoto(name){
+  const im=S.images.find(x=>x.name===name); if(!im)return;
+  ME={name,file:null,start:im.music?(im.music.start||0):0};
+  $('#musChap').textContent='A partir desta foto';
+  $('#musName').textContent=im.music?im.music.file:'nenhuma faixa ainda';
+  $('#musRemove').style.display=im.music?'':'none';
   $('#musEdit').style.display='none';
   const a=$('#musAudio'); a.pause(); a.removeAttribute('src');
   $('#musModal').classList.add('show');
-  if(ch.music){const u=await musUrl(ch); if(u)musPreview(u,ME.start);}
+  if(im.music){const u=await musUrl(im.music.file); if(u)musPreview(u,ME.start);}
 }
 function musPreview(url,start){
   const a=$('#musAudio'); const r=$('#musStart');
@@ -1164,7 +1202,8 @@ function musPreview(url,start){
 }
 function musCloseModal(){$('#musAudio').pause();$('#musModal').classList.remove('show');}
 async function musSave(){
-  const {ch,file,start}=ME; if(!ch)return;
+  const im=S.images.find(x=>x.name===ME.name); if(!im)return;
+  const {file,start}=ME;
   if(file){
     if(!S.dir){toast('Abra a pasta das fotos primeiro.');return;}
     const ext=(file.name.match(/\.[a-z0-9]+$/i)||['.mp3'])[0];
@@ -1173,19 +1212,19 @@ async function musSave(){
       const dir=await S.dir.getDirectoryHandle('_musica',{create:true});
       const fh=await dir.getFileHandle(fname,{create:true});
       const ws=await fh.createWritable(); await ws.write(await file.arrayBuffer()); await ws.close();
-      ch.music={file:fname,start};
+      im.music={file:fname,start};
     }catch(e){toast('Não deu para gravar em _musica/: '+e.message);return;}
-    MUS.urls.delete(ch.id);
-  }else if(ch.music){ch.music.start=start;}
+    MUS.urls.delete(fname);
+  }else if(im.music){im.music.start=start;}
   else{toast('Escolha um arquivo de música.');return;}
-  if(MUS.ch===ch.id)MUS.ch=null;   // força a faixa a reiniciar já com o ponto novo
-  save(); musCloseModal(); renderRecall(); toast('Música salva.');
+  MUS.key=null;   // força reavaliar o ponto ativo já com a mudança
+  save(); musCloseModal(); render(); toast('Música salva a partir desta foto.');
 }
 function musRemove(){
-  if(!ME.ch)return;
-  ME.ch.music=null; MUS.urls.delete(ME.ch.id);
-  if(MUS.ch===ME.ch.id)musStop(.6);
-  save(); musCloseModal(); renderRecall(); toast('Faixa removida (o arquivo continua em _musica/).');
+  const im=S.images.find(x=>x.name===ME.name); if(!im)return;
+  im.music=null;
+  MUS.key=null; if(MUS.cur)musStop(.6);
+  save(); musCloseModal(); render(); toast('Ponto de música removido (o arquivo continua em _musica/).');
 }
 
 /* ---------- RELEMBRAR ---------- */
@@ -1269,17 +1308,14 @@ function renderRecall(){
     const ims=inChap(ch.id);
     const cover=ims[0]?`background-image:url('${ims[0].url}')`:''; // aspas simples: aspas duplas fechariam o style=""
     const span=chapSpan(ch.id);
-    const mus=ch.music
-      ? `<span>♪ ${esc(ch.music.file)}${ch.music.start?' · a partir de '+fmtSecs(ch.music.start):''}</span>`
-      : '<span>♪ Adicionar música…</span>';
+    const nmus=ims.filter(im=>im.music&&im.music.file).length;   // pontos de música definidos neste dia
     return `<div class="chapCard${ims.length?'':' empty'}">
       <button class="go" data-chap="${esc(ch.id)}"${ims.length?'':' disabled'}>
         <div class="cover" style="${cover}">${ims.length?'':'vazio'}</div>
         <div class="meta"><div class="t">${esc(ch.name)}</div>
-          <div class="s">${ims.length} foto${ims.length===1?'':'s'}${span?' · '+span:''}</div></div>
+          <div class="s">${ims.length} foto${ims.length===1?'':'s'}${span?' · '+span:''}${nmus?' · ♪ '+nmus:''}</div></div>
       </button>
       <div class="play">▶</div>
-      <button class="mus${ch.music?' on':''}" data-music="${esc(ch.id)}" title="Escolher a faixa deste dia e onde ela começa">${mus}</button>
     </div>`;
   }).join('');
   c.innerHTML=`<div class="recall">
@@ -1307,7 +1343,6 @@ function renderRecall(){
     const idx=list.findIndex(x=>x.ch.id===b.dataset.chap);
     if(idx>=0)rcOpen(idx);
   });
-  c.querySelectorAll('[data-music]').forEach(b=>b.onclick=()=>openMusic(b.dataset.music));
 }
 function rcOpen(i){
   RC.list=recallList(); if(!RC.list.length)return;
@@ -1322,7 +1357,7 @@ function rcOpen(i){
   RC.vnHidden=false; rcVNClear(); $('#rcVN').classList.remove('hidden'); // zera as falas da sessão
   RC.hudTime=''; RC.sceneHold=0; $('#rcHudCh').textContent=''; $('#rcHudTime').textContent=''; // zera o relógio da sessão
   $('#rc').classList.add('show');
-  MUS.ch=null; musApplyVol();      // este clique é o gesto que libera o autoplay do áudio
+  MUS.key=null; musApplyVol();     // este clique é o gesto que libera o autoplay do áudio
   rcZoomApply();                                     // sem slide em cena: só acerta o botão e a classe
   rcShow(); rcWake();
   document.documentElement.requestFullscreen?.().catch(()=>{}); // gesto do usuário — o Chrome permite
@@ -1412,7 +1447,7 @@ function rcShow(){
     const sp=chapSpan(ch.id);
     rcCard(ch.name+(sp?' · '+sp:''));
   }
-  musPlay(ch);
+  musSync(RC.i);                                     // toca/troca a faixa conforme o ponto de música ativo
   rcStatsShow();                                     // reveal central dos pontos ganhos + acúmulo no canto
   if(!RC.statPending)rcVNStart(im.texts);            // sem pausa de stat: começa as falas já; com pausa, começa no dismiss
   for(const d of [1,2,-1]){const n=RC.list[RC.i+d]; if(n&&n.im)rcPrep(n.im).catch(()=>{});} // vizinhas prontas antes da vez
@@ -1552,6 +1587,7 @@ function rcShowCard(){
   $('#rcTitle').textContent=''; $('#rcSub').textContent='';
   $('#rcCount').textContent=`${RC.i+1} / ${RC.list.length}`; rcBar();
   rcStatsCorner(RC.i,false);                           // canto continua visível (cartão não soma nada)
+  musSync(RC.i);                                       // mantém a faixa do ponto ativo (ou silencia)
   const n=RC.list[RC.i+1]; if(n&&n.im)rcPrep(n.im).catch(()=>{});
   setTimeout(()=>{ if(RC.slide===s)rcVNStart(beat.texts); },520); // falas entram depois do fade
 }

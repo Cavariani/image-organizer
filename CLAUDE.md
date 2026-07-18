@@ -29,7 +29,7 @@ uma sequência narrativa/romântica e **revivê-la** do jeito mais imersivo poss
 - **HUD do Recall** (`rcHud`, `#rcHud`): capítulo (`ch.name`) + relógio (`fmtHour(im.taken)`) no canto sup. direito, **persistente** (não some no idle, por isso fora de `.rcTop`). Sem EXIF mantém a última hora (`RC.hudTime`). O rodapé (`#rcTitle`/`#rcSub`) foi esvaziado; sobrou só a barra de progresso.
 - **Persistência:** IndexedDB (`idbGet`/`idbSet`, store `kv`), chaves `manifest` (por nome de arquivo, com `{chap,order,rej,taken,stats,texts,cardAfter,scene}`), `chapters`, `stats`, `dir`, `outdir`. `save()` é debounced (250ms).
 - **Backup portável:** botão "💾 Baixar backup" (`downloadSession`) exporta um `.json` com manifesto+capítulos+stats; "↺ Importar backup" (`importSessionFile`) regrava o idb e reaplica por nome. Único jeito de sobreviver à perda do IndexedDB do Chrome.
-- **Trilha:** faixa por capítulo, copiada para `_musica/` dentro da pasta; toca no Recall e faz crossfade na troca de dia.
+- **Trilha (por foto):** `im.music = {file,start}` = "a partir desta foto, toque X" (ponto de música). Editado no 🎵 do tile (`openMusicForPhoto` → `#musModal`); arquivo copiado para `_musica/`. No Recall, `activeCue(i)` acha o último ponto ≤ posição atual (continua entre dias até o próximo ponto) e `musSync`/`musPlayCue` fazem o crossfade quando muda. `MUS.key` = nome da foto dona da faixa ativa. Modelo antigo `chapter.music` é migrado por `migrateMusic()` para a 1ª foto de cada dia.
 
 ## Regras que não podem quebrar
 - **Nunca tocar nos arquivos originais.** Organização é metadado (manifesto). O export escreve **cópias renumeradas**
