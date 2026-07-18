@@ -2062,7 +2062,9 @@ $('#rc').addEventListener('wheel',e=>{
 // laço de seleção: começa no vazio da grade (nos tiles, o pointerdown deles arrasta)
 $('#content').addEventListener('pointerdown',e=>{
   if(e.button!==0||S.mode!=='sequence')return;
-  if(e.target.closest('.tile')||e.target.closest('.selbar'))return;
+  // não iniciar o laço de seleção sobre tiles, a barra de ações, a paleta de stats ou qualquer controle
+  if(e.target.closest('.tile')||e.target.closest('.actionBar')||e.target.closest('.statsBar')||
+     e.target.closest('button')||e.target.closest('select')||e.target.closest('input'))return;
   e.preventDefault();
   dndPend(e,'marquee');
 });
