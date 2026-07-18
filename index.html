@@ -133,23 +133,33 @@
     <button id="statSave" class="primary">Salvar</button>
   </div>
 </div></div>
-<div class="modal" id="textModal"><div class="box" style="width:580px;max-width:94vw">
-  <h3 id="textModalT" style="margin:0 0 4px;font-size:16px">Textos</h3>
-  <p style="margin:0 0 16px;color:var(--mut);font-size:12px">Aparecem no Relembrar como visual novel — digitados letra por letra. <kbd>→</kbd> completa a fala, depois avança.</p>
-  <div style="margin-bottom:16px">
+<div class="modal" id="textModal"><div class="box" style="width:740px;max-width:96vw">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:4px">
+    <h3 id="textModalT" style="margin:0;font-size:16px">Textos</h3>
+    <label class="ck" style="gap:8px">Velocidade
+      <input type="range" id="vnSpeed" min="0.4" max="2.2" step="0.1" style="width:120px">
+      <span id="vnSpeedLbl" style="font:11px monospace;color:var(--mut);min-width:2.6em"></span>
+    </label>
+  </div>
+  <p style="margin:0 0 16px;color:var(--mut);font-size:12px">Aparecem no Relembrar como visual novel. Selecione trechos pra formatar (negrito, cor, fonte); escolha o efeito de escrita por fala. <kbd>→</kbd> completa/avança. Use <b>▶ Prévia</b> pra ver como fica.</p>
+  <div style="margin-bottom:18px">
     <label class="fLbl">Falas sobre esta foto</label>
     <div id="textOver"></div>
-    <button class="mini" id="textOverAdd" style="margin-top:2px">＋ Adicionar fala</button>
+    <button class="mini" id="textOverAdd" style="margin-top:8px">＋ Adicionar fala</button>
   </div>
   <div>
     <label class="fLbl">Tela preta depois desta foto</label>
     <div id="textCard"></div>
-    <button class="mini" id="textCardAdd" style="margin-top:2px">＋ Adicionar fala</button>
+    <button class="mini" id="textCardAdd" style="margin-top:8px">＋ Adicionar fala</button>
   </div>
   <div style="display:flex;justify-content:flex-end;margin-top:18px">
     <button id="textDone" class="primary">Concluir</button>
   </div>
 </div></div>
+<div class="vnPreview" id="vnPreview">
+  <div class="rcVN on" style="position:absolute"><div class="rcVNinner"><div class="rcVNtext" id="vnPreviewText"></div></div></div>
+  <button class="vnPreviewClose" id="vnPreviewClose">✕ fechar prévia · clique ou → pula</button>
+</div>
 <div class="toast" id="toast"></div>
   <script type="module" src="/src/main.ts"></script>
 </body>

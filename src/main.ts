@@ -1,4 +1,10 @@
 import "./style.css";
+import "./vn/fonts";
+import { FONTS } from "./vn/fonts";
+import { EFFECTS, getGlobalSpeed, setGlobalSpeed } from "./vn/effects";
+import { createFalaEditor } from "./vn/tiptap";
+import { renderFala, normalizeFala, falaPlain } from "./vn/render";
+import type { Editor } from "@tiptap/core";
 
 "use strict";
 
@@ -278,45 +284,94 @@ function deleteStatDef(){
   save(); $('#statModal').classList.remove('show'); render();
 }
 
-/* ---------- TEXTOS (visual novel) ---------- */
+/* ---------- TEXTOS (visual novel) ----------
+   Cada fala é um doc TipTap rico ({doc,fx,speed}). Falas legadas (string) são normalizadas ao abrir.
+   O editor por-fala dá negrito/itálico/sublinhado + cor/fonte/tamanho por trecho, efeito por fala,
+   e uma prévia que reproduz a digitação como no Recall. Velocidade é global (localStorage). */
 let textEditName=null;
+let vnEditors:Editor[]=[];   // instâncias TipTap vivas no modal (destruídas ao fechar/re-renderizar)
+const VN_SIZES=[['','Tam.'],['0.8em','P'],['1em','M'],['1.3em','G'],['1.7em','GG']];
+const VN_COLORS=['#ffffff','#ff9ec7','#ffd166','#8ecae6','#a0e8af','#ff6b6b','#c8b6ff'];
+
 function openTextModal(name){
   const im=S.images.find(x=>x.name===name); if(!im)return;
   textEditName=name;
-  im.texts=im.texts||[]; im.cardAfter=im.cardAfter||[];
+  im.texts=(im.texts||[]).map(normalizeFala);       // migra falas legadas p/ o formato rico
+  im.cardAfter=(im.cardAfter||[]).map(normalizeFala);
   $('#textModalT').textContent='Textos — '+name;
-  renderTextRows('#textOver', im.texts);
-  renderTextRows('#textCard', im.cardAfter);
+  syncVnSpeed();
+  renderFalaCards('#textOver', im.texts);
+  renderFalaCards('#textCard', im.cardAfter);
   $('#textModal').classList.add('show');
 }
-// as arrays são mutadas no lugar (im.texts / im.cardAfter); por isso passo a própria array
-function renderTextRows(sel, arr){
+function destroyVnEditors(){ vnEditors.forEach(ed=>{try{ed.destroy();}catch(e){}}); vnEditors=[]; }
+
+function renderFalaCards(sel, arr){
   const wrap=$(sel); wrap.innerHTML='';
-  arr.forEach((t,i)=>{
-    const row=el('div','txtRow');
-    const ta=el('textarea'); ta.value=t; ta.rows=1; ta.placeholder='…';
-    ta.addEventListener('input',()=>{arr[i]=ta.value; save();});
-    ta.addEventListener('keydown',e=>e.stopPropagation());
-    const rm=el('button','mini rm'); rm.textContent='✕'; rm.title='Remover fala';
-    rm.onclick=()=>{arr.splice(i,1); save(); renderTextRows(sel,arr);};
-    row.append(ta,rm); wrap.appendChild(row);
+  arr.forEach((fala,i)=>{
+    const card=el('div','falaCard');
+    const tools=el('div','falaTools');
+    tools.innerHTML=
+      `<button data-cmd="bold" title="Negrito"><b>B</b></button>`+
+      `<button data-cmd="italic" title="Itálico"><i>I</i></button>`+
+      `<button data-cmd="underline" title="Sublinhado"><u>U</u></button>`+
+      `<span class="tsep"></span>`+
+      VN_COLORS.map(c=>`<button class="csw" data-color="${c}" style="background:${c}" title="Cor do trecho"></button>`).join('')+
+      `<button class="csw none" data-color="" title="Tirar cor">⌀</button>`+
+      `<span class="tsep"></span>`+
+      `<select data-font title="Fonte do trecho">${FONTS.map((f,fi)=>`<option value="${fi}">${esc(f.label)}</option>`).join('')}</select>`+
+      `<select data-size title="Tamanho do trecho">${VN_SIZES.map((s,si)=>`<option value="${si}">${s[1]}</option>`).join('')}</select>`+
+      `<span class="grow"></span>`+
+      `<select data-fx title="Efeito de escrita desta fala">${EFFECTS.map(fx=>`<option value="${fx.id}"${fala.fx===fx.id?' selected':''}>${esc(fx.label)}</option>`).join('')}</select>`+
+      `<button data-preview title="Prévia">▶</button>`+
+      `<button data-remove class="danger" title="Remover fala">✕</button>`;
+    const mount=el('div','falaEditor');
+    card.append(tools,mount); wrap.appendChild(card);
+    const ed=createFalaEditor(mount, fala.doc);
+    vnEditors.push(ed);
+    ed.on('update',()=>{ fala.doc=ed.getJSON(); save(); });
+    const q=(s)=>tools.querySelector(s);
+    q('[data-cmd="bold"]').onclick=()=>ed.chain().focus().toggleBold().run();
+    q('[data-cmd="italic"]').onclick=()=>ed.chain().focus().toggleItalic().run();
+    q('[data-cmd="underline"]').onclick=()=>ed.chain().focus().toggleUnderline().run();
+    tools.querySelectorAll('[data-color]').forEach(b=>b.onclick=()=>{const c=b.getAttribute('data-color'); const ch=ed.chain().focus(); (c?ch.setColor(c):ch.unsetColor()).run();});
+    q('[data-font]').onchange=(e)=>{const css=FONTS[+e.target.value].css; const ch=ed.chain().focus(); (css?ch.setFontFamily(css):ch.unsetFontFamily()).run(); e.target.selectedIndex=0;};
+    q('[data-size]').onchange=(e)=>{const sz=VN_SIZES[+e.target.value][0]; const ch=ed.chain().focus(); (sz?ch.setFontSize(sz):ch.unsetFontSize()).run(); e.target.selectedIndex=0;};
+    q('[data-fx]').onchange=(e)=>{fala.fx=e.target.value; save();};
+    q('[data-preview]').onclick=()=>previewFala(fala);
+    q('[data-remove]').onclick=()=>{arr.splice(i,1); save(); renderFalaCards(sel,arr);};
   });
 }
 function addTextRow(which){
   const im=S.images.find(x=>x.name===textEditName); if(!im)return;
-  if(which==='over'){im.texts.push(''); renderTextRows('#textOver',im.texts);}
-  else{im.cardAfter.push(''); renderTextRows('#textCard',im.cardAfter);}
+  if(which==='over'){im.texts.push(normalizeFala('')); renderFalaCards('#textOver',im.texts);}
+  else{im.cardAfter.push(normalizeFala('')); renderFalaCards('#textCard',im.cardAfter);}
   save();
 }
 function closeTextModal(){
   const im=S.images.find(x=>x.name===textEditName);
   if(im){ // descarta falas vazias ao concluir
-    im.texts=(im.texts||[]).map(t=>t.trim()).filter(Boolean);
-    im.cardAfter=(im.cardAfter||[]).map(t=>t.trim()).filter(Boolean);
+    im.texts=(im.texts||[]).map(normalizeFala).filter(f=>falaPlain(f));
+    im.cardAfter=(im.cardAfter||[]).map(normalizeFala).filter(f=>falaPlain(f));
     save();
   }
+  destroyVnEditors();
   $('#textModal').classList.remove('show'); render();
 }
+
+// prévia: toca a fala como no Recall, num overlay por cima do modal
+let previewCtrl=null;
+function previewFala(fala){
+  const box=$('#vnPreviewText');
+  $('#vnPreview').classList.add('show');
+  if(previewCtrl)previewCtrl.destroy();
+  previewCtrl=renderFala(box, normalizeFala(fala), ()=>{});
+}
+function previewSkip(){ if(previewCtrl&&!previewCtrl.done){previewCtrl.complete();return;} closePreview(); }
+function closePreview(){ if(previewCtrl){previewCtrl.destroy();previewCtrl=null;} $('#vnPreview').classList.remove('show'); }
+
+// velocidade global de digitação
+function syncVnSpeed(){ const s=getGlobalSpeed(); const r=$('#vnSpeed'); if(r)r.value=String(s); const l=$('#vnSpeedLbl'); if(l)l.textContent=s.toFixed(1)+'×'; }
 
 /* ---------- SEQUENCIAR ---------- */
 function renderSequence(){
@@ -1418,43 +1473,35 @@ function rcCountUp(elm,from,to){
    da foto. Digita letra por letra; enquanto houver fala não-lida, RC.vnPending segura o avanço.
    → completa a fala em digitação (1º) e depois avança (2º). Em auto-play, cada fala tem um respiro
    proporcional ao tamanho e avança sozinha. H esconde/mostra a caixa sem parar o fluxo. */
-const RCVN_CPS=26;                                   // ms por caractere na velocidade base
-function rcVNStart(texts){
+// as falas agora são docs ricos; o renderer (renderFala) cuida da digitação/efeito/estilo por trecho
+function rcVNStart(falasRaw){
   rcVNClear();
-  if(!texts||!texts.length){RC.vnPending=false;return;}
-  RC.vn={texts:texts.slice(),i:0,full:'',pos:0,typing:false,tt:0,dwell:0};
+  const falas=(falasRaw||[]).map(normalizeFala).filter(f=>falaPlain(f));
+  if(!falas.length){RC.vnPending=false;return;}
+  RC.vn={falas,i:0,typing:false,ctrl:null,dwell:0};
   RC.vnPending=true;
   $('#rcVN').classList.add('on');
   $('#rcVNhint').textContent='→ continuar · H esconde';
-  rcVNTypeLine();
+  rcVNPlayLine();
 }
-function rcVNSpeed(ch){ return /[.!?…]/.test(ch)?270 : /[,;:—–]/.test(ch)?150 : RCVN_CPS; } // respira na pontuação
-function rcVNTypeLine(){
+function rcVNPlayLine(){
   const v=RC.vn; if(!v)return;
-  v.full=v.texts[v.i]||''; v.pos=0; v.typing=true;
-  clearTimeout(v.tt); clearTimeout(v.dwell);
-  const box=$('#rcVNtext'); box.textContent='';
-  const step=()=>{
-    if(RC.vn!==v)return;                              // trocou de beat no meio da digitação
-    v.pos++; box.textContent=v.full.slice(0,v.pos);
-    if(v.pos<v.full.length) v.tt=setTimeout(step, rcVNSpeed(v.full[v.pos-1]));
-    else { v.typing=false; rcVNAfterLine(); }
-  };
-  if(v.full) v.tt=setTimeout(step,30); else { v.typing=false; rcVNAfterLine(); }
+  clearTimeout(v.dwell); v.typing=true;
+  v.ctrl=renderFala($('#rcVNtext'), v.falas[v.i], ()=>{ if(RC.vn===v){ v.typing=false; rcVNAfterLine(); } });
 }
 function rcVNAfterLine(){
   const v=RC.vn; if(!v)return;
-  if(RC.play&&!RC.paused){ const t=Math.min(6000,1500+v.full.length*46); v.dwell=setTimeout(rcVNAdvance,t); }
+  if(RC.play&&!RC.paused){ const len=falaPlain(v.falas[v.i]).length; const t=Math.min(6000,1500+len*46); v.dwell=setTimeout(()=>rcVNAdvance(false),t); }
 }
 function rcVNAdvance(manual){
   const v=RC.vn; if(!v||!RC.vnPending)return;
-  if(v.typing){ clearTimeout(v.tt); v.typing=false; v.pos=v.full.length; $('#rcVNtext').textContent=v.full; rcVNAfterLine(); return; } // 1º → completa a fala
+  if(v.typing&&v.ctrl&&!v.ctrl.done){ v.ctrl.complete(); return; } // 1º → completa a fala (onDone dispara afterLine)
   clearTimeout(v.dwell);
-  if(v.i<v.texts.length-1){ v.i++; rcVNTypeLine(); }
+  if(v.i<v.falas.length-1){ v.i++; rcVNPlayLine(); }
   else{ rcVNClear(); if(manual)rcNav(1); else rcAuto(); } // fim das falas: manual troca já; auto agenda pelo ritmo
 }
 function rcVNClear(){
-  const v=RC.vn; if(v){ clearTimeout(v.tt); clearTimeout(v.dwell); }
+  const v=RC.vn; if(v){ clearTimeout(v.dwell); if(v.ctrl)v.ctrl.destroy(); }
   RC.vn=null; RC.vnPending=false;
   const box=$('#rcVN'); if(box){ box.classList.remove('on'); const t=$('#rcVNtext'); if(t)t.textContent=''; }
 }
@@ -1787,8 +1834,16 @@ document.addEventListener('keydown',e=>{
     else if(e.key.toLowerCase()==='d'||e.key==='Delete'){e.preventDefault();lbRemoveFromSeq();}
     return;
   }
+  if($('#vnPreview').classList.contains('show')){    // prévia da fala por cima do modal
+    if(e.key==='ArrowRight'||e.key===' '){e.preventDefault();previewSkip();}
+    else if(e.key==='Escape')closePreview();
+    return;}
   if(document.querySelector('.modal.show')){
-    if(e.key==='Escape'){$('#musAudio').pause();document.querySelectorAll('.modal').forEach(m=>m.classList.remove('show'));}
+    if(e.key==='Escape'){
+      $('#musAudio').pause();
+      if($('#textModal').classList.contains('show'))closeTextModal();   // limpa editores TipTap + poda falas vazias
+      else document.querySelectorAll('.modal').forEach(m=>m.classList.remove('show'));
+    }
     return;}
   if(document.activeElement&&document.activeElement.tagName==='INPUT')return;
   if(S.mode!=='triage'||!S.images.length)return;
@@ -1917,6 +1972,9 @@ $('#statEmoji').addEventListener('keydown',e=>e.stopPropagation());
 $('#textOverAdd').onclick=()=>addTextRow('over');
 $('#textCardAdd').onclick=()=>addTextRow('card');
 $('#textDone').onclick=closeTextModal;
+$('#vnSpeed').oninput=(e)=>{ setGlobalSpeed(+e.target.value); syncVnSpeed(); };
+$('#vnPreview').onclick=previewSkip;                 // clicar na prévia: pula/fecha
+$('#vnPreviewClose').onclick=(e)=>{e.stopPropagation();closePreview();};
 document.querySelectorAll('.modal').forEach(m=>m.addEventListener('click',e=>{
   if(e.target!==m)return;
   $('#musAudio').pause();               // clicar fora não pode deixar a prévia tocando sozinha
