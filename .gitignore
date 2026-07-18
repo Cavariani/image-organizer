@@ -1,0 +1,11 @@
+# config local de ferramentas
+.claude/
+
+# artefatos gerados pelo próprio app dentro da pasta de imagens (nunca versionar)
+_organizado/
+_musica/
+_sessao.json
+composer-sessao-*.json
+
+# sistema
+.DS_Store
