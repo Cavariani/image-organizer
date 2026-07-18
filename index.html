@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Organizador de Imagens</title>
+</head>
+<body>
+<div class="bar">
+  <button id="btnOpen" class="primary"><span>📂</span> Abrir pasta</button>
+  <button id="btnReopen" style="display:none">↻ Reabrir última</button>
+  <div class="seg" id="modeSeg" style="display:none">
+    <button data-mode="triage" class="on">Triagem</button>
+    <button data-mode="sequence">Sequenciar</button>
+    <button data-mode="recall">✦ Relembrar</button>
+  </div>
+  <div class="grow"></div>
+  <div class="count" id="counts"></div>
+  <div class="rangebox" id="zoomBox" style="display:none">
+    <span style="color:var(--dim)">🔍</span>
+    <input type="range" id="zoom" min="70" max="200" value="120" step="10" style="width:90px">
+  </div>
+  <button id="btnSim" style="display:none">✦ Ordenar por similaridade</button>
+  <button id="btnSave" style="display:none" title="Baixa um arquivo .json com TODA a organização (capítulos, ordem, stats, textos). Guarde onde quiser.">💾 Baixar backup</button>
+  <button id="btnRestore" style="display:none" title="Restaura de um arquivo .json baixado antes. As imagens não são tocadas.">↺ Importar backup</button>
+  <input type="file" id="importFile" accept="application/json,.json" style="display:none">
+  <button id="btnExport" class="primary" style="display:none">⬇ Exportar</button>
+</div>
+
+<div class="main">
+  <div class="side" id="side" style="display:none"></div>
+  <div class="content" id="content"></div>
+</div>
+
+<div class="modal" id="cmpModal">
+  <div class="box">
+    <div class="cmp" id="cmpBody"></div>
+  </div>
+</div>
+<div class="modal" id="exportModal">
+  <div class="box" style="width:420px">
+    <h3 style="margin:0 0 4px">Exportar</h3>
+    <p style="color:var(--mut);margin:0 0 14px;font-size:13px">Grava cópias renumeradas. Os originais não são tocados.</p>
+    <div style="background:var(--panel2);border-radius:8px;padding:10px 12px;margin-bottom:10px;display:flex;align-items:center;gap:10px">
+      <div style="min-width:0;flex:1">
+        <div style="font-size:10px;letter-spacing:.6px;text-transform:uppercase;color:var(--dim);margin-bottom:2px">Pasta de destino</div>
+        <div id="exportDest" style="font:12px monospace;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
+      </div>
+      <button id="exportPick" style="flex:none">Escolher…</button>
+      <button id="exportDestReset" style="flex:none;display:none" title="Voltar ao padrão (_organizado/ na pasta das imagens)">↺</button>
+    </div>
+    <div style="background:var(--panel2);border-radius:8px;padding:10px 12px;margin-bottom:12px;font:12px monospace;color:var(--mut)" id="exportPreview"></div>
+    <label class="ck" style="margin-bottom:8px"><input type="checkbox" id="ckRej"> Copiar rejeitadas para <code>_rejeitadas/</code> no destino</label>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+      <button id="exportCancel">Cancelar</button>
+      <button id="exportGo" class="primary">Exportar agora</button>
+    </div>
+  </div>
+</div>
+<div class="modal" id="musModal">
+  <div class="box" style="width:460px">
+    <h3 style="margin:0 0 4px">Música — <span id="musChap"></span></h3>
+    <p style="color:var(--mut);margin:0 0 14px;font-size:13px">A faixa toca durante este dia e faz crossfade na virada. O arquivo é copiado para <code>_musica/</code> dentro da sua pasta, então a trilha viaja junto com as fotos.</p>
+    <input type="file" id="musFile" accept="audio/*" style="display:none">
+    <div style="background:var(--panel2);border-radius:8px;padding:10px 12px;margin-bottom:12px;display:flex;align-items:center;gap:10px">
+      <div style="min-width:0;flex:1">
+        <div style="font-size:10px;letter-spacing:.6px;text-transform:uppercase;color:var(--dim);margin-bottom:2px">Faixa</div>
+        <div id="musName" style="font:12px monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
+      </div>
+      <button id="musPick" style="flex:none">🎵 Escolher…</button>
+    </div>
+    <div id="musEdit" style="display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <span style="font-size:13px;color:var(--mut)">Começa em <b id="musStartLbl" style="color:var(--txt)">0:00</b></span>
+        <button class="mini" id="musPlay">▶ Ouvir daqui</button>
+      </div>
+      <input type="range" id="musStart" min="0" max="100" step="0.5" value="0" style="width:100%">
+      <div style="display:flex;justify-content:space-between;font:11px monospace;color:var(--dim)"><span>0:00</span><span id="musDur">0:00</span></div>
+    </div>
+    <audio id="musAudio"></audio>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button id="musRemove" class="danger" style="margin-right:auto;display:none">Remover faixa</button>
+      <button id="musCancel">Cancelar</button>
+      <button id="musSave" class="primary">Salvar</button>
+    </div>
+  </div>
+</div>
+<div class="lightbox" id="lb">
+  <button class="lbClose" id="lbClose">✕</button>
+  <button class="lbNav lbPrev" id="lbPrev">‹</button>
+  <img id="lbImg" alt="">
+  <button class="lbNav lbNext" id="lbNext">›</button>
+  <div class="lbInfo"><span style="display:inline-flex;align-items:center;gap:5px"><input id="lbPosInput" type="text" inputmode="numeric" title="Digite a posição e Enter" style="width:44px;text-align:center;padding:3px 4px;font:inherit;border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.1);color:#fff;border-radius:6px"><span id="lbTotal" style="color:#b7bcc2"></span></span><span class="nm" id="lbName"></span><button id="lbRemove" style="background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.2);color:#fff" title="Tira desta sequência (volta para “A definir”)">↩ Tirar daqui</button><button id="lbReject">Rejeitar</button></div>
+</div>
+<div class="rc" id="rc">
+  <div class="rcStage" id="rcStage"></div>
+  <div class="rcVig"></div>
+  <div class="rcGrain"></div>
+  <button class="rcArrow rcPrev" id="rcPrev" aria-label="Anterior">‹</button>
+  <button class="rcArrow rcNext" id="rcNext" aria-label="Próxima">›</button>
+  <div class="rcCard" id="rcCard"><span></span></div>
+  <div class="rcStatBig" id="rcStatBig"></div>
+  <div class="rcStats" id="rcStats"></div>
+  <div class="rcVN" id="rcVN"><div class="rcVNinner"><div class="rcVNtext" id="rcVNtext"></div><div class="rcVNhint" id="rcVNhint"></div></div></div>
+  <div class="rcFin" id="rcFin"><div><h3 id="rcFinT"></h3><p id="rcFinS"></p></div></div>
+  <div class="rcTop">
+    <div class="rcCount" id="rcCount"></div>
+    <div class="grow"></div>
+    <input type="range" id="rcVol" min="0" max="100" value="80" title="Volume da música" style="width:74px;accent-color:#fff">
+    <button class="rcBtn" id="rcMute" title="Mudo (M)">🔊</button>
+    <button class="rcBtn" id="rcPlayBtn" title="Pausar (espaço)">⏸</button>
+    <button class="rcBtn" id="rcZoomBtn" title="Zoom automático (Z)">🔍</button>
+    <button class="rcBtn" id="rcFsBtn" title="Tela cheia (F)">⛶</button>
+    <button class="rcBtn" id="rcExit" title="Sair (Esc)">✕</button>
+  </div>
+  <div class="rcBot">
+    <div class="rcTitle" id="rcTitle"></div>
+    <div class="rcSub" id="rcSub"></div>
+    <div class="rcBar" id="rcBar"><i></i></div>
+  </div>
+</div>
+<div class="modal" id="statModal"><div class="box" style="width:340px;max-width:92vw">
+  <h3 id="statModalT" style="margin:0 0 14px;font-size:16px">Novo stat</h3>
+  <label class="fLbl">Nome</label>
+  <input id="statName" type="text" placeholder="ex: momento, risada, chopp" class="fIn">
+  <div style="display:flex;gap:14px;margin-top:12px">
+    <div style="flex:none"><label class="fLbl">Emoji</label><input id="statEmoji" type="text" maxlength="4" placeholder="🥰" class="fIn" style="width:64px;text-align:center;font-size:20px"></div>
+    <div style="flex:1"><label class="fLbl">Cor</label><div class="swatches" id="statSwatches"></div></div>
+  </div>
+  <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px">
+    <button id="statDelete" class="danger" style="margin-right:auto;display:none">Apagar</button>
+    <button id="statCancel">Cancelar</button>
+    <button id="statSave" class="primary">Salvar</button>
+  </div>
+</div></div>
+<div class="modal" id="textModal"><div class="box" style="width:580px;max-width:94vw">
+  <h3 id="textModalT" style="margin:0 0 4px;font-size:16px">Textos</h3>
+  <p style="margin:0 0 16px;color:var(--mut);font-size:12px">Aparecem no Relembrar como visual novel — digitados letra por letra. <kbd>→</kbd> completa a fala, depois avança.</p>
+  <div style="margin-bottom:16px">
+    <label class="fLbl">Falas sobre esta foto</label>
+    <div id="textOver"></div>
+    <button class="mini" id="textOverAdd" style="margin-top:2px">＋ Adicionar fala</button>
+  </div>
+  <div>
+    <label class="fLbl">Tela preta depois desta foto</label>
+    <div id="textCard"></div>
+    <button class="mini" id="textCardAdd" style="margin-top:2px">＋ Adicionar fala</button>
+  </div>
+  <div style="display:flex;justify-content:flex-end;margin-top:18px">
+    <button id="textDone" class="primary">Concluir</button>
+  </div>
+</div></div>
+<div class="toast" id="toast"></div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

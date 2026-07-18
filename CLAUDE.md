@@ -5,10 +5,12 @@ App pessoal de página única para **organizar e reviver** as fotos de um festiv
 uma sequência narrativa/romântica e **revivê-la** do jeito mais imersivo possível.
 
 ## O que é / como rodar
-- **Um único arquivo:** `organizador.html` (~1900 linhas). HTML + CSS + JS vanilla, **zero dependências, zero build**.
-- **Rodar:** abrir o arquivo no **Chrome ou Edge** (precisa da File System Access API; Firefox/Safari não servem).
+- **Projeto Vite + TypeScript** (migrado de um HTML único em 2026-07-18). O código-fonte vive em `src/main.ts` (~2100 linhas, ainda um monólito portado — a modularização é passo seguinte) e `src/style.css`; a marcação em `index.html`.
+- **Dev:** `npm run dev` → servidor com hot-reload, abre no **Chrome ou Edge** (precisa da File System Access API; Firefox/Safari não servem).
+- **Build:** `npm run build` → gera **`dist/index.html`, um único arquivo self-contained** (JS+CSS+fontes inline via `vite-plugin-singlefile`) — abre e funciona offline, igual ao original. É o artefato de uso.
+- **Referência:** `legacy/organizador.html` é o app pré-migração, single-file. Útil pra comparar comportamento (paridade).
 - **Fluxo:** "Abrir pasta" → ler imagens → classificar em capítulos (Triagem) → ordenar (Sequência) → reviver (Recall) → Exportar.
-- **Testar mudança:** abrir o HTML no Chrome e exercitar o modo afetado. Não há testes automatizados nem servidor.
+- **Testar mudança:** `npm run dev` e exercitar o modo afetado no Chrome. Sem testes automatizados. `npm run build` usa esbuild (não faz type-check; erros de tipo não quebram o build).
 
 ## Arquitetura
 - **Estado global `S`** (linha ~350): `{ dir, outDir, images[], chapters[], stats[], mode, active, sel:Set, tIdx, thumb }`.

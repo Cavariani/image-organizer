@@ -1,0 +1,302 @@
+:root{
+    --bg:#111214; --panel:#191b1e; --panel2:#202327; --line:#2c3036;
+    --txt:#e6e8ea; --mut:#9aa0a6; --dim:#6b7178;
+    --acc:#5b8cff; --acc-bg:#1b2740; --danger:#ff6b6b; --danger-bg:#301a1a; --ok:#4ecb8d;
+    --radius:8px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--txt);font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;display:flex;flex-direction:column;overflow:hidden}
+  button{font:inherit;color:var(--txt);background:transparent;border:1px solid var(--line);border-radius:var(--radius);padding:6px 11px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+  button:hover{background:var(--panel2);border-color:#3a3f46}
+  button:active{transform:scale(.98)}
+  button.primary{background:var(--acc-bg);border-color:#33507f;color:#cfe0ff}
+  button.danger{color:#ffbdbd}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  select{font:inherit;color:var(--txt);background:var(--panel2);border:1px solid var(--line);border-radius:var(--radius);padding:5px 8px;cursor:pointer}
+  .bar{display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .seg{display:flex;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  .seg button{border:0;border-radius:0;padding:6px 14px}
+  .seg button.on{background:var(--acc-bg);color:#cfe0ff}
+  .grow{flex:1}
+  .count{color:var(--mut);font-size:12px}
+  .main{flex:1;display:flex;min-height:0}
+  /* sidebar */
+  .side{width:200px;background:var(--panel);border-right:1px solid var(--line);padding:10px;overflow:auto;flex-shrink:0}
+  .side h4{margin:0 0 8px;font-size:11px;letter-spacing:.06em;color:var(--dim);font-weight:600;text-transform:uppercase}
+  .chap{display:flex;align-items:center;gap:6px;padding:7px 8px;border-radius:var(--radius);cursor:pointer;margin-bottom:3px}
+  .chap:hover{background:var(--panel2)}
+  .chap.on{background:var(--acc-bg)}
+  .chap .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .chap .n{color:var(--dim);font-size:12px}
+  .chap.on .n{color:#9db8ee}
+  .chap .drag{color:var(--dim);cursor:grab;font-size:12px;touch-action:none}
+  .chap .x{opacity:0;color:var(--dim);border:0;background:transparent;padding:1px 3px;font-size:11px;line-height:1;border-radius:4px}
+  .chap:hover .x{opacity:1}
+  .chap .x:hover{background:var(--danger-bg);color:#ffb4b4}
+  /* capítulo sob o cursor durante um arraste de fotos */
+  .chap.drop{background:var(--acc-bg);box-shadow:inset 0 0 0 1px var(--acc)}
+  .chap input{background:var(--panel2);border:1px solid var(--acc);color:var(--txt);border-radius:4px;padding:3px 5px;width:100%;font:inherit}
+  .divider{border-top:1px solid var(--line);margin:8px 0;padding-top:8px}
+  .mini{font-size:12px;padding:5px 8px}
+  /* content */
+  .content{flex:1;overflow:auto;padding:12px;position:relative}
+  .selbar{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:8px;background:var(--acc-bg);border:1px solid #33507f;border-radius:var(--radius);padding:7px 10px;margin-bottom:10px;font-size:13px;color:#cfe0ff}
+  .grid{display:grid;gap:8px}
+  .tile{position:relative;aspect-ratio:1;background:var(--panel2);border-radius:6px;overflow:hidden;cursor:pointer;border:2px solid transparent}
+  .tile img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
+  .tile.sel{border-color:var(--acc);outline:2px solid var(--acc)}
+  .tile.rej img{opacity:.28}
+  .tile .idx{position:absolute;left:4px;bottom:4px;font-size:11px;background:rgba(0,0,0,.6);padding:1px 6px;border-radius:8px}
+  .tile .chk{position:absolute;top:4px;right:4px;width:18px;height:18px;border-radius:50%;background:var(--acc);color:#fff;font-size:11px;display:none;align-items:center;justify-content:center}
+  .tile.sel .chk{display:flex}
+  .tile .rejbadge{position:absolute;top:4px;left:4px;background:var(--danger-bg);color:#ffb4b4;border-radius:6px;font-size:11px;padding:1px 6px;display:none}
+  .tile.rej .rejbadge{display:block}
+  /* ---------- arrastar (pointer events, sem HTML5 drag) ---------- */
+  .tile{user-select:none;-webkit-user-select:none;touch-action:none}
+  .tile img{-webkit-user-drag:none}
+  .tile.ghosted{opacity:.3}
+  body.dnd,body.dnd *{cursor:grabbing !important;user-select:none;-webkit-user-select:none}
+  body.mq,body.mq *{cursor:crosshair !important;user-select:none;-webkit-user-select:none}
+  /* laço de seleção: absoluto dentro de .content (position:relative) para rolar junto com a grade */
+  .marquee{position:absolute;z-index:4;pointer-events:none;border:1px solid var(--acc);background:rgba(91,140,255,.16);border-radius:3px}
+  .dragGhost{position:fixed;z-index:200;pointer-events:none;opacity:.9;transform:translate(-50%,-50%) rotate(-2.5deg);filter:drop-shadow(0 14px 26px rgba(0,0,0,.6))}
+  .dragGhost img{width:100%;height:100%;object-fit:cover;display:block;border-radius:6px;border:2px solid var(--acc)}
+  .dragGhost .cnt{position:absolute;top:-9px;right:-9px;min-width:22px;height:22px;padding:0 6px;border-radius:11px;background:var(--acc);color:#fff;font:600 12px/22px -apple-system,sans-serif;text-align:center}
+  .dragGhost.chapGhost{background:var(--panel2);border:1px solid var(--acc);border-radius:6px;padding:6px 10px;font-size:13px;transform:translate(-50%,-50%)}
+  .dropLine{position:fixed;z-index:199;display:none;background:var(--acc);border-radius:2px;pointer-events:none;box-shadow:0 0 10px rgba(91,140,255,.9)}
+  .tile .selbox{position:absolute;top:4px;left:4px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.5);border:1.5px solid #fff;display:none;align-items:center;justify-content:center;font-size:12px;color:transparent}
+  .tile:hover .selbox{display:flex}
+  .tile.sel .selbox{display:flex;background:var(--acc);border-color:var(--acc);color:#fff}
+  .tile .del{position:absolute;top:4px;right:4px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.5);color:#fff;border:0;display:none;align-items:center;justify-content:center;font-size:11px;cursor:pointer;padding:0;line-height:1}
+  .tile:hover .del{display:flex}
+  .tile .del:hover{background:var(--danger)}
+  /* lightbox */
+  .lightbox{position:fixed;inset:0;background:rgba(0,0,0,.93);z-index:70;display:none;align-items:center;justify-content:center;user-select:none;-webkit-user-select:none}
+  .lightbox.show{display:flex}
+  .lightbox img{max-width:90vw;max-height:84vh;object-fit:contain;border-radius:6px;background:#000;user-select:none;-webkit-user-select:none;-webkit-user-drag:none;pointer-events:none}
+  .lbNav{position:absolute;top:50%;transform:translateY(-50%);font-size:32px;background:rgba(255,255,255,.08);border:0;color:#fff;width:52px;height:82px;border-radius:10px;cursor:pointer}
+  .lbNav:hover{background:rgba(255,255,255,.16)}
+  .lbPrev{left:16px}.lbNext{right:16px}
+  .lbClose{position:absolute;top:16px;right:16px;font-size:16px;background:rgba(255,255,255,.08);border:0;color:#fff;width:40px;height:40px;border-radius:50%;cursor:pointer}
+  .lbInfo{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:14px;background:rgba(0,0,0,.65);padding:8px 16px;border-radius:24px;color:#fff;font-size:13px}
+  .lbInfo .nm{color:#b7bcc2;font-size:12px}
+  .lbInfo button{background:var(--danger-bg);border-color:#5a2a2a;color:#ffbdbd;padding:4px 10px}
+  /* triage */
+  .triage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;gap:14px}
+  .triage .stage{flex:1;width:100%;display:flex;align-items:center;justify-content:center;min-height:0}
+  .triage img{max-width:100%;max-height:100%;object-fit:contain;border-radius:8px}
+  .triage .meta{display:flex;align-items:center;gap:16px;color:var(--mut);font-size:13px}
+  .triage .tag{padding:3px 10px;border-radius:20px;background:var(--panel2)}
+  .triage .tag.rej{background:var(--danger-bg);color:#ffb4b4}
+  .triage .keys{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+  .triage .keys button{font-size:13px}
+  .prog{width:100%;max-width:640px;height:4px;background:var(--panel2);border-radius:3px;overflow:hidden}
+  .prog>i{display:block;height:100%;background:var(--acc)}
+  kbd{background:var(--panel2);border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 5px;font:12px monospace}
+  /* empty / center screens */
+  .center{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px}
+  .center h2{margin:0;font-weight:600}
+  .center p{margin:0;color:var(--mut);max-width:440px}
+  /* modal */
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;z-index:50;padding:24px}
+  .modal.show{display:flex}
+  .modal .box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;max-width:95vw;max-height:92vh;overflow:auto}
+  .cmp{display:flex;gap:14px}
+  .cmp>div{flex:1;text-align:center}
+  .cmp img{max-width:42vw;max-height:64vh;border-radius:8px;background:#000}
+  .cmp h5{margin:6px 0}
+  .rangebox{display:flex;align-items:center;gap:8px}
+  input[type=range]{accent-color:var(--acc)}
+  .toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);padding:9px 16px;border-radius:20px;z-index:60;display:none}
+  label.ck{display:flex;align-items:center;gap:8px;color:var(--mut);font-size:13px;cursor:pointer}
+
+  /* ---------- RELEMBRAR: índice ---------- */
+  .recall{padding:4px 2px 24px}
+  .recallHead{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin:6px 2px 18px;flex-wrap:wrap}
+  .recallHead h2{margin:0 0 5px;font-size:22px;font-weight:600}
+  .recallHead p{margin:0;color:var(--mut);font-size:13px;max-width:560px;line-height:1.5}
+  .chapCards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+  /* o card virou uma div: um <button> não pode conter outro, e agora há o botão de música dentro */
+  .chapCard{display:flex;flex-direction:column;position:relative;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel);transition:transform .14s,border-color .14s}
+  .chapCard:hover{transform:translateY(-2px);border-color:var(--acc)}
+  .chapCard.empty{opacity:.45}
+  .chapCard.empty:hover{transform:none;border-color:var(--line)}
+  /* flex-column: dentro de um <button> os filhos não esticam sozinhos e a capa colapsaria */
+  .chapCard .go{display:flex;flex-direction:column;align-items:stretch;flex:1;border:0;border-radius:0;background:transparent;padding:0;text-align:left;color:var(--txt);cursor:pointer;gap:0}
+  .chapCard .go:hover{background:transparent}
+  .chapCard.empty .go{cursor:default}
+  .chapCard .cover{aspect-ratio:16/10;background:var(--panel2) center/cover no-repeat;display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:12px}
+  .chapCard .play{position:absolute;top:8px;right:8px;width:28px;height:28px;border-radius:50%;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;font-size:11px;opacity:0;transition:opacity .14s;pointer-events:none}
+  .chapCard:not(.empty):hover .play{opacity:1}
+  .chapCard .meta{padding:9px 11px}
+  .chapCard .t{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .chapCard .s{font-size:12px;color:var(--dim);margin-top:2px}
+  .chapCard .mus{width:100%;border:0;border-top:1px solid var(--line);border-radius:0;background:transparent;padding:7px 11px;font-size:12px;color:var(--dim);justify-content:flex-start;overflow:hidden}
+  .chapCard .mus span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .chapCard .mus:hover{background:var(--panel2);color:var(--txt);border-color:var(--line)}
+  .chapCard .mus.on{color:#9db8ee}
+
+  /* ---------- RELEMBRAR: player imersivo ---------- */
+  .rc{position:fixed;inset:0;background:#000;z-index:80;display:none;overflow:hidden}
+  .rc.show{display:block}
+  /* o `*` não é exagero: cursor é herdado, e herança perde de qualquer regra própria do filho.
+     Sem alcançar os descendentes, o cursor:default do .rcStage (que cobre a tela toda) vence e
+     o sumiço do cursor nunca acontece. Vale para .idle e para .fs. */
+  .rc.idle,.rc.idle *{cursor:none}
+  .rcStage{position:absolute;inset:0}
+  .rcSlide{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:0;opacity:0;transition:opacity .5s ease}
+  .rcSlide.in{opacity:1}
+  /* Fundo ambiente: a própria foto, ampliada e desfocada — preenche as laterais das verticais.
+     A fonte aqui é uma miniatura de 32px (ver rcPrep): esticada para a tela ela JÁ chega borrada
+     pela própria interpolação, então um blur pequeno só limpa o quadriculado. O blur(48px) que
+     estava aqui rodava sobre o JPEG de 12MP inteiro e era o principal motivo do engasgo. */
+  .rcBg{position:absolute;inset:-14%;background-position:center;background-size:cover;filter:blur(22px) saturate(1.3) brightness(.5);transform:scale(1.06)}
+  .rcSlide.in .rcBg{animation:rcDrift 26s ease-out forwards;will-change:transform}
+  /* altura cheia, encostando no topo e na base — o que sobra nas laterais é o fundo desfocado */
+  .rcSlide img{max-width:100%;max-height:100%;object-fit:contain;display:block;position:relative;box-shadow:0 0 90px rgba(0,0,0,.6);-webkit-user-drag:none;user-select:none}
+  /* Ken Burns: todas as variações PARTEM do mesmo ponto (scale 1, sem deslocamento) — só a direção
+     do movimento muda. Se as escalas iniciais diferissem, cada foto entraria num tamanho diferente. */
+  .rcSlide.in img{animation:24s ease-out forwards}
+  .rcSlide.kb1.in img{animation-name:kb1}
+  .rcSlide.kb2.in img{animation-name:kb2}
+  .rcSlide.kb3.in img{animation-name:kb3}
+  .rcSlide.kb4.in img{animation-name:kb4}
+  /* de propósito quase imperceptível: a direção do Ken Burns é sorteada por índice, então metade das
+     vezes ele afastaria da pessoa na foto. Devagar vence vistoso — quem enquadra é a varredura. */
+  @keyframes kb1{from{transform:scale(1) translate(0,0)}to{transform:scale(1.03) translate(-.6%,-.6%)}}
+  @keyframes kb2{from{transform:scale(1) translate(0,0)}to{transform:scale(1.03) translate(.6%,-.5%)}}
+  @keyframes kb3{from{transform:scale(1) translate(0,0)}to{transform:scale(1.03) translate(-.5%,.6%)}}
+  @keyframes kb4{from{transform:scale(1) translate(0,0)}to{transform:scale(1.03) translate(.6%,.5%)}}
+  @keyframes rcDrift{from{transform:scale(1.06)}to{transform:scale(1.11) translate(.6%,-.6%)}}
+  /* zoom desligado: nem varredura, nem Ken Burns, nem deriva no fundo — a foto entra inteira e fica parada */
+  .rc.nozoom .rcSlide.in .rcBg{animation:none}
+  /* leitura em estágios: enquanto a foto está enquadrada, quem manda no transform é o rcLoop (JS) */
+  /* cursor sempre neutro: o ícone de lupa aparecia por cima da foto e quebrava a imersão.
+     O clique para ampliar continua valendo — só não se anuncia. */
+  .rcStage{cursor:default}
+  /* !important: as regras kb1..kb4 têm especificidade maior e a animação venceria o transform do JS.
+     Sem transition: cada quadro do transform vem do rAF, um transition brigaria com ele. */
+  .rcSlide.pan img{animation:none !important;will-change:transform}
+  /* vinheta + grão: as duas coisas mais baratas que separam "foto na tela" de "cinema".
+     Ficam no #rc (uma vez), não no slide — rasterizam uma vez e nunca mais. */
+  .rcVig,.rcGrain{position:absolute;inset:0;z-index:1;pointer-events:none}
+  .rcVig{background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.45) 100%)}
+  .rcGrain{opacity:.05;mix-blend-mode:overlay;background-size:200px 200px;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+  .rc.nograin .rcGrain{display:none}
+  /* cartela final: cinco dias merecem desfecho, não um corte seco de volta pra grade */
+  .rcFin{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;
+    background:#000;opacity:0;pointer-events:none;transition:opacity 1.6s ease;text-align:center;color:#fff}
+  .rcFin.on{opacity:1}
+  .rcFin h3{margin:0 0 8px;font-size:26px;font-weight:600;letter-spacing:.01em}
+  .rcFin p{margin:0;color:rgba(255,255,255,.6);font-size:14px}
+  .rcTop,.rcBot{position:absolute;left:0;right:0;z-index:3;color:#fff;transition:opacity .3s}
+  .rcTop{top:0;display:flex;align-items:center;gap:10px;padding:14px 16px;background:linear-gradient(rgba(0,0,0,.55),transparent)}
+  .rcBot{bottom:0;display:flex;flex-direction:column;gap:7px;padding:26px 20px 18px;background:linear-gradient(transparent,rgba(0,0,0,.7))}
+  .rc.idle .rcTop,.rc.idle .rcBot,.rc.idle .rcArrow{opacity:0;pointer-events:none}
+  /* tela cheia = só a foto: nenhuma UI, nem no hover. Teclado e clique nas laterais seguem valendo. */
+  .rc.fs,.rc.fs *{cursor:none}
+  .rc.fs .rcTop,.rc.fs .rcBot{display:none}
+  .rc.fs .rcArrow{opacity:0;background:none;pointer-events:auto}
+  .rcCount{font:12px monospace;color:rgba(255,255,255,.75);background:rgba(0,0,0,.35);padding:4px 10px;border-radius:20px}
+  .rcBtn{background:rgba(255,255,255,.12);border:0;color:#fff;width:36px;height:36px;border-radius:50%;cursor:pointer;font-size:14px;padding:0}
+  .rcBtn:hover{background:rgba(255,255,255,.22)}
+  /* zoom desligado: a lupa do botão aparece cortada */
+  .rcBtn.off{opacity:.6;position:relative}
+  .rcBtn.off::after{content:'';position:absolute;left:7px;right:7px;top:50%;height:2px;margin-top:-1px;border-radius:2px;background:#fff;box-shadow:0 -1px 0 rgba(0,0,0,.5);transform:rotate(-45deg)}
+  .rcTitle{font-size:16px;font-weight:600;text-shadow:0 1px 12px rgba(0,0,0,.6)}
+  .rcSub{font-size:12px;color:rgba(255,255,255,.62)}
+  .rcBar{height:3px;background:rgba(255,255,255,.18);border-radius:2px;overflow:hidden;margin-top:3px}
+  .rcBar>i{display:block;height:100%;background:#fff;transition:width .35s ease}
+  .rcArrow{position:absolute;top:0;bottom:0;width:20%;z-index:2;border:0;border-radius:0;background:transparent;color:#fff;font-size:38px;cursor:pointer;opacity:0;transition:opacity .2s;display:flex;align-items:center;justify-content:center}
+  .rcArrow:hover{opacity:1}
+  .rcPrev{left:0;justify-content:flex-start;padding-left:22px;background:linear-gradient(90deg,rgba(0,0,0,.5),transparent)}
+  .rcNext{right:0;justify-content:flex-end;padding-right:22px;background:linear-gradient(270deg,rgba(0,0,0,.5),transparent)}
+  /* cartela do capítulo — aparece ao entrar em um capítulo novo */
+  .rcCard{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:4;pointer-events:none;opacity:0}
+  .rcCard.on{animation:rcCard 2.6s ease forwards}
+  .rcCard span{background:rgba(0,0,0,.45);backdrop-filter:blur(10px);color:#fff;padding:14px 30px;border-radius:999px;font-size:21px;letter-spacing:.01em;box-shadow:0 8px 40px rgba(0,0,0,.5)}
+  @keyframes rcCard{0%{opacity:0;transform:scale(.97)}12%{opacity:1;transform:scale(1)}72%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.01)}}
+  @media (prefers-reduced-motion:reduce){
+    .rcSlide.in img,.rcSlide.in .rcBg{animation:none}
+  }
+
+  /* ---------- STATS ---------- */
+  /* paleta no topo de Sequenciar */
+  .statsBar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:2px 2px 12px}
+  .statsBar .lbl{font-size:11px;letter-spacing:.06em;color:var(--dim);text-transform:uppercase;font-weight:600;margin-right:2px}
+  .statChip{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:20px;border:1px solid var(--line);background:var(--panel2);cursor:pointer;font-size:13px}
+  .statChip:hover{border-color:#3a3f46}
+  .statChip .dot{width:9px;height:9px;border-radius:50%;flex:none}
+  .statChip.add{color:var(--mut)}
+  /* selinhos e botão no tile */
+  .tile .stx{position:absolute;right:4px;bottom:4px;display:flex;align-items:center;gap:3px;flex-wrap:wrap-reverse;justify-content:flex-end;max-width:calc(100% - 34px);z-index:2}
+  .tile .stb{display:inline-flex;align-items:center;gap:2px;padding:1px 6px;border-radius:9px;font-size:11px;color:#fff;background:rgba(0,0,0,.62);box-shadow:inset 3px 0 0 var(--c,#fff);cursor:pointer}
+  .tile .stAdd{width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.5);color:#fff;border:0;display:none;align-items:center;justify-content:center;font-size:13px;cursor:pointer;padding:0;line-height:1}
+  .tile:hover .stAdd{display:flex}
+  /* popover de anexar */
+  .statPop{position:fixed;z-index:55;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px;box-shadow:0 8px 30px rgba(0,0,0,.5);width:238px;max-height:60vh;overflow:auto}
+  .statPop h5{margin:2px 4px 8px;font-size:11px;letter-spacing:.06em;color:var(--dim);text-transform:uppercase}
+  .statPopRow{display:flex;align-items:center;gap:7px;padding:5px 6px;border-radius:7px}
+  .statPopRow:hover{background:var(--panel2)}
+  .statPopRow .e{font-size:16px}
+  .statPopRow .dot{width:8px;height:8px;border-radius:50%;flex:none}
+  .statPopRow .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+  .statStep{width:24px;height:24px;padding:0;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:15px;flex:none}
+  .statPopRow .ct{min-width:20px;text-align:center;font-variant-numeric:tabular-nums;font-weight:600}
+  .statPopNew{width:100%;margin-top:6px;justify-content:center;color:var(--mut)}
+  .statPopEmpty{color:var(--mut);font-size:13px;padding:10px 6px;text-align:center}
+  /* modal criar/editar */
+  .fLbl{display:block;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--dim);margin:0 0 5px;font-weight:600}
+  .fIn{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px 10px;font:inherit}
+  .fIn:focus{outline:none;border-color:var(--acc)}
+  .swatches{display:flex;gap:7px;flex-wrap:wrap}
+  .swatches button{width:26px;height:26px;border-radius:50%;border:2px solid transparent;padding:0;cursor:pointer}
+  .swatches button.on{border-color:#fff}
+  /* caixinha no Recall */
+  .rcStats{position:absolute;left:18px;bottom:104px;z-index:5;display:none;flex-direction:column;gap:7px;pointer-events:none}
+  .rcStats.on{display:flex}
+  .rc.fs .rcStats{bottom:26px}
+  .rcStatRow{display:flex;align-items:center;gap:8px;background:rgba(0,0,0,.42);backdrop-filter:blur(6px);border-left:3px solid var(--c,#fff);border-radius:8px;padding:6px 12px 6px 9px;color:#fff;opacity:0;transform:translateX(-14px);transition:opacity .45s,transform .45s;font-size:14px}
+  .rcStatRow.in{opacity:1;transform:none}
+  .rcStatRow .e{font-size:17px;line-height:1}
+  .rcStatRow .n{color:#e9ebee}
+  .rcStatRow .v{margin-left:5px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--c,#fff);min-width:1.1em;text-align:right;display:inline-block}
+  .rcStatRow .v.bump{animation:rcBump .5s ease}
+  @keyframes rcBump{0%{transform:scale(1)}28%{transform:scale(1.42)}100%{transform:scale(1)}}
+  /* reveal central: os pontos ganhos aparecem grandes no meio antes de ir pro canto */
+  .rcStatBig{position:absolute;inset:0;z-index:6;display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;pointer-events:none}
+  .rcStatBig.on{display:flex}
+  .rcBigCard{display:flex;align-items:center;gap:18px;background:rgba(0,0,0,.5);backdrop-filter:blur(14px);border-radius:18px;padding:18px 30px;color:#fff;border-left:5px solid var(--c,#fff);box-shadow:0 16px 60px rgba(0,0,0,.55);opacity:0;transform:translateY(20px) scale(.9)}
+  .rcBigCard.in{animation:rcBigIn .55s cubic-bezier(.2,.9,.25,1) both}
+  .rcBigCard.out{animation:rcBigOut .38s ease forwards}
+  .rcBigCard .be{font-size:46px;line-height:1}
+  .rcBigCard .bmeta{text-align:left}
+  .rcBigCard .bn{font-size:21px;font-weight:600}
+  .rcBigCard .bt{font-size:13px;color:#c8ccd2;margin-top:2px}
+  .rcBigCard .bp{margin-left:6px;font-size:32px;font-weight:800;color:var(--c,#fff);font-variant-numeric:tabular-nums}
+  @keyframes rcBigIn{0%{opacity:0;transform:translateY(20px) scale(.88)}60%{opacity:1;transform:translateY(0) scale(1.05)}100%{opacity:1;transform:translateY(0) scale(1)}}
+  @keyframes rcBigOut{0%{opacity:1;transform:translateY(0) scale(1)}100%{opacity:0;transform:translateY(-16px) scale(.95)}}
+  /* ---------- VISUAL NOVEL ---------- */
+  /* edição das falas no modal */
+  .txtRow{display:flex;gap:6px;margin-bottom:6px}
+  .txtRow textarea{flex:1;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px 10px;font:inherit;resize:vertical;min-height:38px;line-height:1.4}
+  .txtRow textarea:focus{outline:none;border-color:var(--acc)}
+  .txtRow .rm{flex:none;align-self:flex-start;padding:6px 9px}
+  /* botão 💬 no tile */
+  .tile .txtBtn{position:absolute;top:4px;left:50%;transform:translateX(-50%);height:20px;padding:0 8px;border-radius:10px;background:rgba(0,0,0,.55);color:#fff;border:0;font-size:12px;display:none;align-items:center;gap:3px;cursor:pointer;line-height:1;z-index:2}
+  .tile:hover .txtBtn{display:inline-flex}
+  .tile .txtBtn.has{display:inline-flex;background:rgba(91,140,255,.8)}
+  /* dialog box no Recall: gradiente BEM leve só pra legibilidade, sem caixa dura */
+  .rcVN{position:absolute;left:0;right:0;bottom:0;z-index:5;display:none;padding:0 0 clamp(70px,12vh,120px);pointer-events:none;
+    background:linear-gradient(to top,rgba(0,0,0,.62) 0%,rgba(0,0,0,.34) 34%,rgba(0,0,0,.08) 66%,transparent 100%)}
+  .rcVN.on{display:block}
+  .rcVN.on.hidden{display:none}
+  .rc.fs .rcVN{padding-bottom:clamp(48px,8vh,90px)}
+  .rcVNinner{max-width:860px;margin:0 auto;padding:0 40px}
+  .rcVNtext{color:#fff;font-size:clamp(18px,2.5vw,28px);line-height:1.55;font-weight:450;letter-spacing:.005em;
+    text-shadow:0 2px 16px rgba(0,0,0,.55),0 1px 3px rgba(0,0,0,.6);min-height:1.55em;white-space:pre-wrap}
+  .rcVNcaret{display:inline-block;width:.5em;margin-left:1px;color:rgba(255,255,255,.85);animation:rcCaret 1s steps(1) infinite}
+  @keyframes rcCaret{50%{opacity:0}}
+  .rcVNhint{margin-top:14px;font-size:12px;color:rgba(255,255,255,.45);letter-spacing:.02em;transition:opacity .3s}
