@@ -421,30 +421,40 @@ function closeTextModal(){
 // prévia: overlay fullscreen que toca uma sequência de falas como no Recall (opcionalmente com a foto
 // de fundo). Usada tanto pelo ▶ do editor (1 fala, sem foto) quanto pelo duplo-clique na grade (foto + texts).
 const MOOD_FILTER={warm:'saturate(1.28) sepia(.16) brightness(1.03)',cold:'saturate(1.06) contrast(1.04) hue-rotate(14deg)',night:'brightness(.66) saturate(.82) contrast(1.06)',bw:'grayscale(1) contrast(1.06)'};
-let PV={falas:[],i:0,ctrl:null};
-function pvStart(falas, im){
+// PV.list = nomes da visão atual (navegável com ← →); vazio = prévia de 1 fala do editor (sem foto)
+let PV={list:[],idx:0,falas:[],i:0,ctrl:null};
+function pvPlay(){ PV.ctrl=renderFala($('#vnPreviewText'), PV.falas[PV.i], ()=>{}); }
+// prévia de UMA fala (▶ do editor): sem foto, sem navegação
+function previewFala(fala){
   pvKill();
-  PV={falas:(falas||[]).map(normalizeFala).filter(f=>falaPlain(f)), i:0, ctrl:null};
-  const img=$('#vnPreviewImg');
-  if(im){ img.style.display='block'; img.src=im.url; img.style.filter=(im.scene&&MOOD_FILTER[im.scene.mood])||'none'; }
-  else img.style.display='none';
-  $('#vnPreviewText').textContent='';
-  $('#vnPreview').classList.add('show');
+  PV={list:[],idx:0,falas:[normalizeFala(fala)].filter(f=>falaPlain(f)),i:0,ctrl:null};
+  $('#vnPreviewImg').style.display='none';
+  $('#vnPreviewText').textContent=''; $('#vnPreview').classList.add('show');
   if(PV.falas.length)pvPlay();
 }
-function pvPlay(){ PV.ctrl=renderFala($('#vnPreviewText'), PV.falas[PV.i], ()=>{}); }
-function previewFala(fala){ pvStart([fala], null); }        // ▶ do editor: 1 fala, sem foto
-function openPhotoPreview(name){                            // duplo-clique: foto + suas falas
-  const im=S.images.find(x=>x.name===name); if(!im)return;
-  pvStart(im.texts||[], im);
+// prévia da foto (duplo-clique / menu): foto + falas, navegável com ← → dentro da visão atual
+function openPhotoPreview(name){
+  const list=(S.viewList||[]).map(im=>im.name);
+  PV.list=list; PV.idx=Math.max(0,list.indexOf(name));
+  $('#vnPreview').classList.add('show');
+  pvShow();
 }
-function previewSkip(){                                     // → / clique: completa a fala, ou avança, ou fecha
+function pvShow(){
+  pvKill();
+  const im=S.images.find(x=>x.name===PV.list[PV.idx]); if(!im){closePreview();return;}
+  PV.falas=(im.texts||[]).map(normalizeFala).filter(f=>falaPlain(f)); PV.i=0;
+  const img=$('#vnPreviewImg'); img.style.display='block'; img.src=im.url; img.style.filter=(im.scene&&MOOD_FILTER[im.scene.mood])||'none';
+  $('#vnPreviewText').textContent='';
+  if(PV.falas.length)pvPlay();
+}
+function pvNav(d){ if(!PV.list.length)return; const n=PV.idx+d; if(n<0||n>=PV.list.length)return; PV.idx=n; pvShow(); }
+function previewSkip(){                                     // espaço / clique: completa a fala, ou avança
   if(PV.ctrl&&!PV.ctrl.done){ PV.ctrl.complete(); return; }
   if(PV.i<PV.falas.length-1){ PV.i++; pvPlay(); return; }
-  closePreview();
+  if(!PV.list.length)closePreview();                       // prévia de 1 fala: acabou → fecha
 }
 function pvKill(){ if(PV.ctrl){PV.ctrl.destroy();PV.ctrl=null;} }
-function closePreview(){ pvKill(); $('#vnPreview').classList.remove('show'); const img=$('#vnPreviewImg'); if(img){img.removeAttribute('src');img.style.display='none';} }
+function closePreview(){ pvKill(); PV.list=[]; $('#vnPreview').classList.remove('show'); const img=$('#vnPreviewImg'); if(img){img.removeAttribute('src');img.style.display='none';} }
 
 // velocidade global de digitação
 function syncVnSpeed(){ const s=getGlobalSpeed(); const r=$('#vnSpeed'); if(r)r.value=String(s); const l=$('#vnSpeedLbl'); if(l)l.textContent=s.toFixed(1)+'×'; }
@@ -2148,8 +2158,10 @@ document.addEventListener('keydown',e=>{
     else if(e.key.toLowerCase()==='d'||e.key==='Delete'){e.preventDefault();lbRemoveFromSeq();}
     return;
   }
-  if($('#vnPreview').classList.contains('show')){    // prévia da fala por cima do modal
-    if(e.key==='ArrowRight'||e.key===' '){e.preventDefault();previewSkip();}
+  if($('#vnPreview').classList.contains('show')){    // prévia fullscreen
+    if(PV.list.length&&e.key==='ArrowRight'){e.preventDefault();pvNav(1);}   // ← → trocam de foto na visão
+    else if(PV.list.length&&e.key==='ArrowLeft'){e.preventDefault();pvNav(-1);}
+    else if(e.key===' '||e.key==='ArrowRight'){e.preventDefault();previewSkip();} // espaço avança o texto (→ na prévia de 1 fala)
     else if(e.key==='Escape')closePreview();
     return;}
   if(document.querySelector('.modal.show')){
