@@ -56,6 +56,10 @@
   .tile .tind{position:absolute;right:4px;bottom:4px;display:flex;align-items:center;gap:2px;flex-wrap:wrap-reverse;
     justify-content:flex-end;max-width:calc(100% - 40px);z-index:2;pointer-events:none}
   .tile .tind .ti{font-size:11px;background:rgba(0,0,0,.6);border-radius:8px;padding:1px 5px;line-height:1.5}
+  /* hora calculada no tile: interpolada (discreta) vs fixada/marco (destaque) */
+  .tile .tclock{position:absolute;top:4px;right:4px;font-size:11px;font-variant-numeric:tabular-nums;
+    background:rgba(0,0,0,.62);color:#dfe3e8;border-radius:8px;padding:1px 6px;line-height:1.5;z-index:2}
+  .tile .tclock.pin{background:var(--acc);color:#fff;font-weight:600}
   .tile .tind .stb{pointer-events:none}
   /* opções do popover de tempo */
   .tempoOpt{display:block;width:100%;text-align:left;border:0;background:transparent;padding:8px 10px;border-radius:7px;color:var(--txt);cursor:pointer;font:inherit}

@@ -229,8 +229,7 @@ function tindHtml(im){
   return statBadgesHTML(im)
     +(((im.texts&&im.texts.length)||(im.cardAfter&&im.cardAfter.length))?'<span class="ti">💬</span>':'')
     +((im.music&&im.music.file)?'<span class="ti">🎵</span>':'')
-    +(sceneSet?'<span class="ti">🎬</span>':'')
-    +(im.clock!=null?'<span class="ti">🕐</span>':'');
+    +(sceneSet?'<span class="ti">🎬</span>':'');
 }
 function refreshTileStats(name){
   document.querySelectorAll('.tile').forEach(t=>{
@@ -420,11 +419,26 @@ function renderSequence(){
   }else{
     const cols=Math.max(2,Math.floor(($('#content').clientWidth-24)/S.thumb));
     html+=`<div class="grid" style="grid-template-columns:repeat(${cols},1fr)">`;
+    // relógio no tile: numa view de capítulo, a lista JÁ é o capítulo e i é a posição —
+    // computo os marcos uma vez e uso i (evita recalcular por tile). Fora disso, sem relógio.
+    const activeCh=(S.active!==UN&&S.active!==REJ)?S.chapters.find(c=>c.id===S.active):null;
+    const anchorsA=activeCh?chapAnchors(activeCh).anchors:null;
+    const clkAt=(pos)=>{
+      if(!activeCh||!anchorsA||!anchorsA.length)return null;
+      if(anchorsA.length===1){const a=anchorsA[0];return a.min+(pos-a.pos)*(activeCh.timeStep??CLOCK_DEFAULT_STEP);}
+      if(pos<=anchorsA[0].pos)return anchorsA[0].min;
+      const L=anchorsA[anchorsA.length-1]; if(pos>=L.pos)return L.min;
+      for(let k=0;k<anchorsA.length-1;k++){const a=anchorsA[k],b=anchorsA[k+1]; if(pos>=a.pos&&pos<=b.pos)return a.min+(b.min-a.min)*(pos-a.pos)/(b.pos-a.pos);}
+      return anchorsA[0].min;
+    };
     list.forEach((im,i)=>{
       const ind=tindHtml(im);
+      const cm=clkAt(i); const clk=cm!=null?fmtMin(cm):'';   // hora calculada, mostrada no próprio tile
+      const clkBadge=clk?`<span class="tclock${im.clock!=null?' pin':''}" title="${im.clock!=null?'Hora fixada (marco)':'Hora interpolada'}">${im.clock!=null?'🕐 ':''}${clk}</span>`:'';
       html+=`<div class="tile ${S.sel.has(im.name)?'sel':''} ${im.rej?'rej':''}" data-name="${esc(im.name)}">
         <img src="${im.url}" alt="" loading="lazy">
         <span class="idx"${S.active!==REJ?' data-idx style="cursor:pointer" title="Mover para posição"':''}>${i+1}</span>
+        ${clkBadge}
         <div class="selbox" data-selbox title="Selecionar">✓</div>
         <span class="rejbadge">rej</span>
         ${ind?`<div class="tind">${ind}</div>`:''}
@@ -717,8 +731,8 @@ function openChapTimePop(anchor,id){
     p.querySelector('#ctStart').oninput=e=>{ const v=parseHHMM(e.target.value); if(v!=null){ch.timeStart=v;
       p.querySelector('.ctReadout').innerHTML=`1ª <b>${fmtMin(v)}</b> → última <b>${fmtMin(previewLast(v,ch.timeStep??CLOCK_DEFAULT_STEP))}</b>`; } };
     p.querySelector('#ctStep').oninput=e=>{ ch.timeStep=+e.target.value; ch.timeStart=ch.timeStart??CLOCK_DEFAULT_START; draw(); };
-    p.querySelector('#ctSave').onclick=()=>{ ch.timeStart=ch.timeStart??CLOCK_DEFAULT_START; ch.timeStep=ch.timeStep??CLOCK_DEFAULT_STEP; save(); closeStatPop(); renderSidebar(); toast('Tempo do capítulo salvo.'); };
-    p.querySelector('#ctClear').onclick=()=>{ delete ch.timeStart; delete ch.timeStep; save(); closeStatPop(); renderSidebar(); toast('Capítulo volta ao relógio padrão.'); };
+    p.querySelector('#ctSave').onclick=()=>{ ch.timeStart=ch.timeStart??CLOCK_DEFAULT_START; ch.timeStep=ch.timeStep??CLOCK_DEFAULT_STEP; save(); closeStatPop(); renderSequence(); toast('Tempo do capítulo salvo.'); };
+    p.querySelector('#ctClear').onclick=()=>{ delete ch.timeStart; delete ch.timeStep; save(); closeStatPop(); renderSequence(); toast('Capítulo volta ao relógio padrão.'); };
   };
   draw();
   document.body.appendChild(p);
