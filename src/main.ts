@@ -404,7 +404,7 @@ function pvStart(falas, im){
   pvKill();
   PV={falas:(falas||[]).map(normalizeFala).filter(f=>falaPlain(f)), i:0, ctrl:null};
   const img=$('#vnPreviewImg');
-  if(im){ img.style.display=''; img.src=im.url; img.style.filter=(im.scene&&MOOD_FILTER[im.scene.mood])||'none'; }
+  if(im){ img.style.display='block'; img.src=im.url; img.style.filter=(im.scene&&MOOD_FILTER[im.scene.mood])||'none'; }
   else img.style.display='none';
   $('#vnPreviewText').textContent='';
   $('#vnPreview').classList.add('show');
