@@ -620,32 +620,29 @@ function openTempoPop(anchor,name){
 function globalPace(){ const v=parseFloat(localStorage.getItem('rcPace')||''); return v>0?v:1; }
 function setGlobalPace(v){ localStorage.setItem('rcPace', String(v)); }
 
-// fixar a hora (marco) desta foto: im.clock em min desde 0h; interpola com os outros marcos do capítulo
+// fixar a hora (marco) desta foto. Guarda a hora de parede (HH:MM); a virada do dia é resolvida no
+// cálculo (chapAnchors): uma hora menor que o marco anterior = dia seguinte. Sem trava.
 function openClockPin(anchor,name){
   closeStatPop();
   const im=S.images.find(x=>x.name===name); if(!im)return;
   const ch=im.chap?S.chapters.find(c=>c.id===im.chap):null;
   const pos=ch?inChap(ch.id).findIndex(x=>x.name===name):-1;
-  // limites: entre o marco anterior e o próximo (impede voltar no tempo — conflito impossível)
-  const b=ch?clockBounds(ch,pos):{lo:null,hi:null};
-  const lo=b.lo??0, hi=b.hi??1439;
   // pré-preenchido: a hora fixada, ou a interpolada atual (bom ponto de partida)
   let preset=CLOCK_DEFAULT_START;
   if(im.clock!=null)preset=im.clock;
-  else if(ch){ const m=clockMinAt(ch,pos); if(m!=null)preset=Math.round(m); }
-  preset=Math.max(lo,Math.min(hi,preset));
+  else if(ch){ const m=clockMinAt(ch,pos); if(m!=null)preset=((Math.round(m)%1440)+1440)%1440; }
   const p=el('div','statPop'); statPopEl=p; p.style.width='214px';
   p.innerHTML=`<h5>Fixar hora desta foto</h5>
-    <input type="time" class="fIn" id="pinTime" value="${fmtMin(preset)}" min="${fmtMin(lo)}" max="${fmtMin(hi)}">
+    <input type="time" class="fIn" id="pinTime" value="${fmtMin(preset)}">
     <div style="display:flex;gap:6px;margin-top:12px">
       <button class="mini" id="pinClear" title="Deixa a hora ser interpolada"${im.clock==null?' disabled':''}>Soltar</button>
       <span style="flex:1"></span>
       <button class="mini primary" id="pinSave">Fixar</button>
     </div>
-    <p style="margin:8px 2px 0;color:var(--dim);font-size:11px">Entre ${fmtMin(lo)} e ${fmtMin(hi)} (limitado pelos marcos vizinhos).</p>`;
+    <p style="margin:8px 2px 0;color:var(--dim);font-size:11px">Se a hora for menor que a do marco anterior, entra como madrugada (dia seguinte).</p>`;
   document.body.appendChild(p);
   p.querySelector('#pinTime').addEventListener('keydown',e=>e.stopPropagation());
-  p.querySelector('#pinSave').onclick=()=>{ let v=parseHHMM(p.querySelector('#pinTime').value); if(v==null){toast('Hora inválida.');return;} v=Math.max(lo,Math.min(hi,v)); im.clock=v; save(); closeStatPop(); renderSequence(); toast('Marco fixado: '+fmtMin(v)); };
+  p.querySelector('#pinSave').onclick=()=>{ const v=parseHHMM(p.querySelector('#pinTime').value); if(v==null){toast('Hora inválida.');return;} im.clock=v; save(); closeStatPop(); renderSequence(); toast('Marco fixado: '+fmtMin(v)); };
   p.querySelector('#pinClear').onclick=()=>{ im.clock=null; save(); closeStatPop(); renderSequence(); toast('Marco solto.'); };
   const r=anchor.getBoundingClientRect(), pw=p.offsetWidth, ph=p.offsetHeight;
   let left=Math.min(r.left, innerWidth-8-pw), top=r.top-ph-8; if(top<8)top=r.bottom+8;
@@ -764,12 +761,15 @@ const CLOCK_DEFAULT_START=14*60;   // 14:00 (pré-preenchimento do 1º marco)
 const CLOCK_DEFAULT_STEP=4;        // min/foto (só p/ migrar capítulos do modelo antigo)
 function fmtMin(total){ const m=((Math.round(total)%1440)+1440)%1440; return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0'); }
 function parseHHMM(s){ const m=/^(\d{1,2}):(\d{2})$/.exec(s||''); if(!m)return null; const h=+m[1],mm=+m[2]; if(h>23||mm>59)return null; return h*60+mm; }
-// UM conceito só: marcos = fotos com im.clock (min desde 0h). A 1ª e a última fixadas são os limites
-// do dia; entre elas interpola. Conflito é impossível: a edição limita a hora entre os vizinhos.
+// UM conceito só: marcos = fotos com im.clock (hora de parede, min desde 0h). O dia é uma LINHA DO
+// TEMPO CONTÍNUA: se a hora "volta" de um marco pro próximo (ex: 19:33 → 01:32), virou o dia e somo
+// 24h internamente (min contínuo). Assim a interpolação é sempre crescente; o display volta a wrap.
 function chapAnchors(ch){
   const ims=inChap(ch.id);
-  const anchors=[];
-  ims.forEach((im,i)=>{ if(im.clock!=null)anchors.push({pos:i,min:im.clock}); });
+  const raw=[];
+  ims.forEach((im,i)=>{ if(im.clock!=null)raw.push({pos:i,wall:im.clock}); });
+  const anchors=[]; let addDay=0, prevWall=-1;
+  for(const a of raw){ if(a.wall<prevWall)addDay+=1440; anchors.push({pos:a.pos,min:a.wall+addDay}); prevWall=a.wall; }
   return {ims,anchors};
 }
 // minutos por posição: interpola entre marcos e CONTINUA nas pontas (extrapola na inclinação do
@@ -780,23 +780,15 @@ function clockMins(ch){
   if(!anchors.length)return {ims,mins:out};
   const f=anchors[0], L=anchors[anchors.length-1];
   const slope=(b,a)=>b.pos!==a.pos?(b.min-a.min)/(b.pos-a.pos):0;
-  const clamp=m=>Math.max(0,Math.min(1439,m));
   for(let p=0;p<n;p++){
     if(anchors.length===1){ out[p]=f.min; continue; }                       // 1 marco: plano
-    if(p<f.pos){ out[p]=clamp(f.min+(p-f.pos)*slope(anchors[1],f)); continue; }              // antes: segue a 1ª rampa
-    if(p>L.pos){ out[p]=clamp(L.min+(p-L.pos)*slope(L,anchors[anchors.length-2])); continue; } // depois: segue a última rampa
+    if(p<f.pos){ out[p]=Math.max(0,f.min+(p-f.pos)*slope(anchors[1],f)); continue; }         // antes: segue a 1ª rampa (não negativa)
+    if(p>L.pos){ out[p]=L.min+(p-L.pos)*slope(L,anchors[anchors.length-2]); continue; }      // depois: segue a última rampa (pode passar da meia-noite)
     for(let k=0;k<anchors.length-1;k++){ const a=anchors[k],b=anchors[k+1]; if(p>=a.pos&&p<=b.pos){ out[p]=a.min+(b.min-a.min)*(p-a.pos)/(b.pos-a.pos); break; } }
   }
   return {ims,mins:out};
 }
 function clockMinAt(ch,pos){ const {mins}=clockMins(ch); return (pos>=0&&pos<mins.length)?mins[pos]:null; }
-// limites de edição da hora de uma foto: entre o marco anterior e o próximo (impede voltar no tempo)
-function clockBounds(ch,pos){
-  const ims=inChap(ch.id); let lo=null,hi=null;
-  for(let i=pos-1;i>=0;i--){ if(ims[i].clock!=null){lo=ims[i].clock;break;} }
-  for(let i=pos+1;i<ims.length;i++){ if(ims[i].clock!=null){hi=ims[i].clock;break;} }
-  return {lo,hi};
-}
 // hora (HH:MM) de uma foto: sintética se o capítulo tiver marcos; senão cai no EXIF
 function photoClock(im,ch){
   if(ch){
