@@ -60,6 +60,14 @@
   .tile .tclock{position:absolute;top:4px;right:4px;font-size:11px;font-variant-numeric:tabular-nums;
     background:rgba(0,0,0,.62);color:#dfe3e8;border-radius:8px;padding:1px 6px;line-height:1.5;z-index:2}
   .tile .tclock.pin{background:var(--acc);color:#fff;font-weight:600}
+  /* bloco de "tela preta" (texto entre imagens) na grade */
+  .cardBlock{aspect-ratio:1;border-radius:6px;overflow:hidden;cursor:pointer;border:2px solid var(--line);
+    background:#0a0a0b;display:flex;align-items:center;justify-content:center;padding:10px}
+  .cardBlock:hover{border-color:var(--acc)}
+  .cardBlock .cbInner{display:flex;flex-direction:column;gap:6px;text-align:center;max-width:100%}
+  .cardBlock .cbTag{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+  .cardBlock .cbText{color:#e6e8ea;font-size:12px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+  .cardBlock .cbMore{font-size:11px;color:var(--mut)}
   .tile .tind .stb{pointer-events:none}
   /* opções do popover de tempo */
   .tempoOpt{display:block;width:100%;text-align:left;border:0;background:transparent;padding:8px 10px;border-radius:7px;color:var(--txt);cursor:pointer;font:inherit}

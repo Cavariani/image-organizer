@@ -312,22 +312,32 @@ function deleteStatDef(){
    O editor por-fala dá negrito/itálico/sublinhado + cor/fonte/tamanho por trecho, efeito por fala,
    e uma prévia que reproduz a digitação como no Recall. Velocidade é global (localStorage). */
 let textEditName=null;
+let textEditMode='photo';
 let vnEditors:Editor[]=[];   // instâncias TipTap vivas no modal (destruídas ao fechar/re-renderizar)
 const VN_SIZES=[['','Tam.'],['0.8em','P'],['1em','M'],['1.3em','G'],['1.7em','GG']];
 const VN_COLORS=['#ffffff','#ff9ec7','#ffd166','#8ecae6','#a0e8af','#ff6b6b','#c8b6ff'];
 
-function openTextModal(name){
+// mode: 'photo' (falas sobre a foto + cena + tela preta) | 'card' (só a tela preta, focado)
+function openTextModal(name, mode){
+  mode=mode||'photo';
   const im=S.images.find(x=>x.name===name); if(!im)return;
-  textEditName=name;
+  textEditName=name; textEditMode=mode;
   im.texts=(im.texts||[]).map(normalizeFala);       // migra falas legadas p/ o formato rico
   im.cardAfter=(im.cardAfter||[]).map(normalizeFala);
-  $('#textModalT').textContent='Textos — '+name;
+  const card=mode==='card';
+  $('#textModalT').textContent=card?'Tela preta depois de '+name:'Textos — '+name;
+  $('#textIntro').style.display=card?'none':'';
+  $('#cenaRow').style.display=card?'none':'';        // cena é da foto, não do cartão
+  $('#textOverSec').style.display=card?'none':'';    // "falas sobre a foto" só no modo foto
+  $('#textCardLbl').textContent=card?'Falas desta tela preta':'Tela preta depois desta foto';
+  $('#textCardDel').style.display=card?'inline-flex':'none';
   const sc=im.scene||{};                              // sincroniza a linha "Cena desta foto"
   $('#cenaFx').value=sc.fx||'crossfade';
   $('#cenaMood').value=sc.mood||'';
   $('#cenaHold').value=String(sc.hold||0);
   syncVnSpeed();
-  renderFalaCards('#textOver', im.texts);
+  if(!card)renderFalaCards('#textOver', im.texts);
+  if(card&&!im.cardAfter.length)im.cardAfter.push(normalizeFala(''));   // abre já com uma fala pronta
   renderFalaCards('#textCard', im.cardAfter);
   $('#textModal').classList.add('show');
 }
@@ -445,6 +455,14 @@ function renderSequence(){
         <span class="rejbadge">rej</span>
         ${ind?`<div class="tind">${ind}</div>`:''}
       </div>`;
+      // tela preta depois desta foto: bloco preto visível na grade, clicável para editar
+      const cards=(im.cardAfter||[]).filter(f=>falaPlain(f));
+      if(cards.length&&!im.rej){
+        const prev=esc(falaPlain(cards[0]).slice(0,120));
+        html+=`<div class="cardBlock" data-cardfor="${esc(im.name)}" title="Tela preta — clique para editar">
+          <div class="cbInner"><span class="cbTag">▦ tela preta</span><span class="cbText">${prev||'(vazio)'}</span>${cards.length>1?`<span class="cbMore">+${cards.length-1} fala${cards.length-1>1?'s':''}</span>`:''}</div>
+        </div>`;
+      }
     });
     html+='</div>';
   }
@@ -459,6 +477,9 @@ function renderSequence(){
   c.querySelector('[data-newstat]')?.addEventListener('click',()=>openStatModal(null));
 
   // tiles (limpos: clique amplia, círculo seleciona, ações vão pra barra)
+  c.querySelectorAll('.cardBlock').forEach(b=>{
+    b.addEventListener('click',()=>openTextModal(b.dataset.cardfor,'card'));
+  });
   c.querySelectorAll('.tile').forEach(t=>{
     const name=t.dataset.name;
     t.addEventListener('click',e=>{
@@ -2215,7 +2236,7 @@ $('#rc').addEventListener('wheel',e=>{
 $('#content').addEventListener('pointerdown',e=>{
   if(e.button!==0||S.mode!=='sequence')return;
   // não iniciar o laço de seleção sobre tiles, a barra de ações, a paleta de stats ou qualquer controle
-  if(e.target.closest('.tile')||e.target.closest('.actionBar')||e.target.closest('.statsBar')||
+  if(e.target.closest('.tile')||e.target.closest('.cardBlock')||e.target.closest('.actionBar')||e.target.closest('.statsBar')||
      e.target.closest('button')||e.target.closest('select')||e.target.closest('input'))return;
   e.preventDefault();
   dndPend(e,'marquee');
@@ -2229,6 +2250,7 @@ $('#statName').addEventListener('keydown',e=>{e.stopPropagation();if(e.key==='En
 $('#statEmoji').addEventListener('keydown',e=>e.stopPropagation());
 $('#textOverAdd').onclick=()=>addTextRow('over');
 $('#textCardAdd').onclick=()=>addTextRow('card');
+$('#textCardDel').onclick=()=>{ const im=S.images.find(x=>x.name===textEditName); if(im){im.cardAfter=[];save();} destroyVnEditors(); $('#textModal').classList.remove('show'); render(); };
 $('#textDone').onclick=closeTextModal;
 $('#vnSpeed').oninput=(e)=>{ setGlobalSpeed(+e.target.value); syncVnSpeed(); };
 function currentTextIm(){ return S.images.find(x=>x.name===textEditName); }
