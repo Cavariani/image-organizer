@@ -447,19 +447,10 @@ function renderSequence(){
     const cols=Math.max(2,Math.floor(($('#content').clientWidth-24)/S.thumb));
     html+=`<div class="grid" style="grid-template-columns:repeat(${cols},1fr)">`;
     // relógio no tile: numa view de capítulo, a lista JÁ é o capítulo e i é a posição —
-    // computo os marcos uma vez e uso i (evita recalcular por tile). Fora disso, sem relógio.
+    // computo os minutos (com clamp monotônico) uma vez e uso i. Fora de capítulo, sem relógio.
     const activeCh=(S.active!==UN&&S.active!==REJ)?S.chapters.find(c=>c.id===S.active):null;
-    const anchorsA=activeCh?chapAnchors(activeCh).anchors:null;
-    const clkAt=(pos)=>{
-      if(!activeCh||!anchorsA||!anchorsA.length)return null;
-      if(anchorsA.length===1){const a=anchorsA[0];return a.min+(pos-a.pos)*(activeCh.timeStep??CLOCK_DEFAULT_STEP);}
-      const f=anchorsA[0], L=anchorsA[anchorsA.length-1];
-      const sl=(b,a)=>b.pos!==a.pos?(b.min-a.min)/(b.pos-a.pos):0;
-      if(pos<=f.pos)return f.min+(pos-f.pos)*sl(anchorsA[1],f);
-      if(pos>=L.pos)return L.min+(pos-L.pos)*sl(L,anchorsA[anchorsA.length-2]);
-      for(let k=0;k<anchorsA.length-1;k++){const a=anchorsA[k],b=anchorsA[k+1]; if(pos>=a.pos&&pos<=b.pos)return a.min+(b.min-a.min)*(pos-a.pos)/(b.pos-a.pos);}
-      return f.min;
-    };
+    const activeMins=activeCh?clockMins(activeCh).mins:null;
+    const clkAt=(pos)=>activeMins?activeMins[pos]:null;
     list.forEach((im,i)=>{
       const ind=tindHtml(im);
       const cm=clkAt(i); const clk=cm!=null?fmtMin(cm):'';   // hora calculada, mostrada no próprio tile
@@ -749,41 +740,45 @@ const CLOCK_DEFAULT_END=23*60;     // 23:00
 const CLOCK_DEFAULT_STEP=4;        // min/foto (só p/ migrar capítulos do modelo antigo)
 function fmtMin(total){ const m=((Math.round(total)%1440)+1440)%1440; return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0'); }
 function parseHHMM(s){ const m=/^(\d{1,2}):(\d{2})$/.exec(s||''); if(!m)return null; const h=+m[1],mm=+m[2]; if(h>23||mm>59)return null; return h*60+mm; }
-// marcos do capítulo por posição: foto 1 = timeStart, última = timeEnd, fotos com im.clock no meio
+// marcos do capítulo por posição: foto 1 = timeStart, última = timeEnd (se definida), fotos com im.clock no meio
 function chapAnchors(ch){
   const ims=inChap(ch.id);
   const last=ims.length-1;
   const map=new Map();
   if(ch.timeStart!=null)map.set(0,ch.timeStart);
-  if(last>0){
-    if(ch.timeEnd!=null)map.set(last,ch.timeEnd);
-    else if(ch.timeStart!=null&&ch.timeStep!=null)map.set(last,ch.timeStart+last*ch.timeStep); // migra o modelo antigo
-  }
+  if(last>0&&ch.timeEnd!=null)map.set(last,ch.timeEnd);
   ims.forEach((im,i)=>{ if(im.clock!=null)map.set(i,im.clock); });  // marco fixado na foto vence
   return {ims,anchors:[...map.entries()].map(([pos,min])=>({pos,min})).sort((a,b)=>a.pos-b.pos)};
 }
-// minutos (desde 0h) de uma foto na posição pos; interpola entre marcos e extrapola nas pontas (nunca "trava")
-function clockMinAt(ch,pos){
-  const {anchors}=chapAnchors(ch);
+// interpolação/extrapolação crua na posição pos
+function rawClockMin(anchors,ch,pos){
   if(!anchors.length)return null;
   if(anchors.length===1){ const a=anchors[0]; return a.min + (pos-a.pos)*(ch.timeStep??CLOCK_DEFAULT_STEP); }
-  const first=anchors[0], lastA=anchors[anchors.length-1];
+  const f=anchors[0], L=anchors[anchors.length-1];
   const slope=(b,a)=>b.pos!==a.pos?(b.min-a.min)/(b.pos-a.pos):0;
-  if(pos<=first.pos)  return first.min + (pos-first.pos)*slope(anchors[1],first);          // antes: segue a 1ª rampa
-  if(pos>=lastA.pos)  return lastA.min + (pos-lastA.pos)*slope(lastA,anchors[anchors.length-2]); // depois: segue a última rampa
-  for(let k=0;k<anchors.length-1;k++){
-    const a=anchors[k], b=anchors[k+1];
-    if(pos>=a.pos&&pos<=b.pos)return a.min + (b.min-a.min)*(pos-a.pos)/(b.pos-a.pos);
-  }
-  return first.min;
+  if(pos<=f.pos)return f.min + (pos-f.pos)*slope(anchors[1],f);                          // antes: segue a 1ª rampa
+  if(pos>=L.pos)return L.min + (pos-L.pos)*slope(L,anchors[anchors.length-2]);           // depois: segue a última rampa
+  for(let k=0;k<anchors.length-1;k++){ const a=anchors[k],b=anchors[k+1]; if(pos>=a.pos&&pos<=b.pos)return a.min+(b.min-a.min)*(pos-a.pos)/(b.pos-a.pos); }
+  return f.min;
 }
+// minutos por posição do capítulo, JÁ com clamp monotônico: o relógio nunca anda pra trás. Se dois
+// marcos conflitam (o de trás com hora maior), o trecho vira platô em vez de decrescer — nunca some.
+function clockMins(ch){
+  const {ims,anchors}=chapAnchors(ch);
+  const n=ims.length, out=new Array(n).fill(null);
+  if(anchors.length){
+    for(let p=0;p<n;p++)out[p]=rawClockMin(anchors,ch,p);
+    for(let p=1;p<n;p++)if(out[p]!=null&&out[p-1]!=null&&out[p]<out[p-1])out[p]=out[p-1];   // não-decrescente
+  }
+  return {ims,mins:out};
+}
+function clockMinAt(ch,pos){ const {mins}=clockMins(ch); return (pos>=0&&pos<mins.length)?mins[pos]:null; }
 // hora (HH:MM) de uma foto: sintética se o capítulo tiver marcos; senão cai no EXIF
 function photoClock(im,ch){
   if(ch){
-    const {ims}=chapAnchors(ch);
-    const pos=Math.max(0,ims.findIndex(x=>x.name===im.name));
-    const m=clockMinAt(ch,pos);
-    if(m!=null)return fmtMin(m);
+    const {ims,mins}=clockMins(ch);
+    const pos=ims.findIndex(x=>x.name===im.name);
+    if(pos>=0&&mins[pos]!=null)return fmtMin(mins[pos]);
   }
   return im.taken?fmtHour(im.taken):'';
 }
