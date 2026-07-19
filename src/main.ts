@@ -748,7 +748,13 @@ function chapAnchors(ch){
   if(ch.timeStart!=null)map.set(0,ch.timeStart);
   if(last>0&&ch.timeEnd!=null)map.set(last,ch.timeEnd);
   ims.forEach((im,i)=>{ if(im.clock!=null)map.set(i,im.clock); });  // marco fixado na foto vence
-  return {ims,anchors:[...map.entries()].map(([pos,min])=>({pos,min})).sort((a,b)=>a.pos-b.pos)};
+  const sorted=[...map.entries()].map(([pos,min])=>({pos,min})).sort((a,b)=>a.pos-b.pos);
+  // relógio não volta no tempo: descarta âncoras conflitantes (hora < a anterior, por posição).
+  // Como varre por posição, a de posição maior é a descartada — os marcos que você fixou vencem
+  // uma "hora final" velha/baixa herdada, e some o platô que travava o resto do dia.
+  const anchors=[]; let hi=-Infinity, dropped=0;
+  for(const a of sorted){ if(a.min>=hi){anchors.push(a);hi=a.min;} else dropped++; }
+  return {ims,anchors,dropped};
 }
 // interpolação/extrapolação crua na posição pos
 function rawClockMin(anchors,ch,pos){
@@ -788,17 +794,22 @@ function openChapTimePop(anchor,id){
   const nfotos=inChap(ch.id).length;
   const p=el('div','statPop'); statPopEl=p; p.style.width='258px';
   const pinned=inChap(ch.id).filter(im=>im.clock!=null).length;   // marcos fixados em fotos do meio
-  // fim efetivo pré-preenchido: timeEnd, ou migrado do modelo antigo (start+passo), ou default
   const start0=ch.timeStart??CLOCK_DEFAULT_START;
-  const end0=ch.timeEnd ?? (ch.timeStep!=null&&nfotos>1?start0+(nfotos-1)*ch.timeStep:CLOCK_DEFAULT_END);
+  // fim pré-preenchido = hora REAL calculada da última foto (respeita marcos e o filtro anti-conflito),
+  // então re-salvar cura uma "hora final" velha que estava em conflito
+  const cm0=clockMins(ch).mins;
+  const compLast=(cm0.length&&cm0[cm0.length-1]!=null)?Math.round(cm0[cm0.length-1]):null;
+  const end0=compLast!=null?compLast:(ch.timeEnd??CLOCK_DEFAULT_END);
   const draw=()=>{
     const start=ch.timeStart??CLOCK_DEFAULT_START, end=ch.timeEnd??end0;
+    const conflict=chapAnchors(ch).dropped;
     p.innerHTML=`<h5>Tempo do capítulo · ${nfotos} foto${nfotos===1?'':'s'}</h5>
       <label class="fLbl">Hora da 1ª foto</label>
       <input type="time" class="fIn" id="ctStart" value="${fmtMin(start)}">
       <label class="fLbl" style="margin-top:8px">Hora da última foto</label>
       <input type="time" class="fIn" id="ctEnd" value="${fmtMin(end)}"${nfotos<=1?' disabled':''}>
       <div class="ctReadout">1ª <b>${fmtMin(start)}</b> → última <b id="ctLast">${fmtMin(end)}</b></div>
+      ${conflict?`<p style="margin:8px 2px 0;color:#ffb4b4;font-size:11px">⚠ ${conflict} marco em conflito (hora volta no tempo) — ignorado. Salve pra corrigir a hora final.</p>`:''}
       <p style="margin:8px 2px 0;color:var(--dim);font-size:11px">${pinned?pinned+' foto'+(pinned>1?'s':'')+' com hora fixada no meio (dobram a linha).':'O dia distribui do início ao fim. Fixe a hora em fotos-chave (🕐 na barra) pra desacelerar trechos como a golden hour.'}</p>
       <div style="display:flex;gap:6px;margin-top:10px">
         <button class="mini" id="ctClear" title="Volta ao relógio padrão (EXIF)">Limpar</button>
