@@ -701,7 +701,6 @@ function renderSidebar(){
       <span class="drag" data-chapdrag title="Arraste para reordenar">⠿</span>
       <span class="nm" title="${esc(ch.name)} — duplo clique para renomear">${esc(ch.name)}</span>
       <span class="n">${n}</span>
-      <button class="x${inChap(ch.id).some(im=>im.clock!=null)?' set':''}" data-timechap title="Horário do dia (início e fim)">🕐</button>
       <button class="x" data-editchap title="Renomear (ou duplo clique no nome)">✎</button>
       <button class="x" data-delchap title="Remover capítulo">✕</button></div>`;
   });
@@ -725,7 +724,6 @@ function renderSidebar(){
     if(id!==UN&&id!==REJ){
       row.querySelector('.nm').addEventListener('dblclick',ev=>{ev.stopPropagation();editChap(id);});
       row.querySelector('[data-editchap]').addEventListener('click',ev=>{ev.stopPropagation();editChap(id);});
-      row.querySelector('[data-timechap]').addEventListener('click',ev=>{ev.stopPropagation();openChapTimePop(ev.currentTarget,id);});
       row.querySelector('[data-delchap]').addEventListener('click',ev=>{ev.stopPropagation();delChap(id);});
       row.querySelector('[data-chapdrag]').addEventListener('pointerdown',ev=>{
         if(ev.button!==0)return; ev.stopPropagation(); dndPend(ev,'chap',id);});
@@ -762,8 +760,7 @@ function editChap(id){
    (marcos na 1ª e última foto); o 🕐 da foto fixa marcos no meio. Entre marcos o relógio interpola
    pela posição (golden hour, com poucas fotos, desacelera). Conflito é IMPOSSÍVEL: a edição limita a
    hora entre os marcos vizinhos. ch.timeStart/timeEnd/timeStep = modelo antigo, migrado p/ marcos. */
-const CLOCK_DEFAULT_START=14*60;   // 14:00
-const CLOCK_DEFAULT_END=23*60;     // 23:00
+const CLOCK_DEFAULT_START=14*60;   // 14:00 (pré-preenchimento do 1º marco)
 const CLOCK_DEFAULT_STEP=4;        // min/foto (só p/ migrar capítulos do modelo antigo)
 function fmtMin(total){ const m=((Math.round(total)%1440)+1440)%1440; return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0'); }
 function parseHHMM(s){ const m=/^(\d{1,2}):(\d{2})$/.exec(s||''); if(!m)return null; const h=+m[1],mm=+m[2]; if(h>23||mm>59)return null; return h*60+mm; }
@@ -775,15 +772,19 @@ function chapAnchors(ch){
   ims.forEach((im,i)=>{ if(im.clock!=null)anchors.push({pos:i,min:im.clock}); });
   return {ims,anchors};
 }
-// minutos por posição: interpola entre marcos; fora do intervalo dos marcos, fixa no marco da ponta
+// minutos por posição: interpola entre marcos e CONTINUA nas pontas (extrapola na inclinação do
+// trecho vizinho) — assim o relógio não congela depois do último marco. Com 1 marco só, fica plano.
 function clockMins(ch){
   const {ims,anchors}=chapAnchors(ch);
   const n=ims.length, out=new Array(n).fill(null);
   if(!anchors.length)return {ims,mins:out};
   const f=anchors[0], L=anchors[anchors.length-1];
+  const slope=(b,a)=>b.pos!==a.pos?(b.min-a.min)/(b.pos-a.pos):0;
+  const clamp=m=>Math.max(0,Math.min(1439,m));
   for(let p=0;p<n;p++){
-    if(p<=f.pos){ out[p]=f.min; continue; }              // antes do 1º marco: a hora dele
-    if(p>=L.pos){ out[p]=L.min; continue; }              // depois do último: a hora dele
+    if(anchors.length===1){ out[p]=f.min; continue; }                       // 1 marco: plano
+    if(p<f.pos){ out[p]=clamp(f.min+(p-f.pos)*slope(anchors[1],f)); continue; }              // antes: segue a 1ª rampa
+    if(p>L.pos){ out[p]=clamp(L.min+(p-L.pos)*slope(L,anchors[anchors.length-2])); continue; } // depois: segue a última rampa
     for(let k=0;k<anchors.length-1;k++){ const a=anchors[k],b=anchors[k+1]; if(p>=a.pos&&p<=b.pos){ out[p]=a.min+(b.min-a.min)*(p-a.pos)/(b.pos-a.pos); break; } }
   }
   return {ims,mins:out};
@@ -804,52 +805,6 @@ function photoClock(im,ch){
     if(pos>=0&&mins[pos]!=null)return fmtMin(mins[pos]);
   }
   return im.taken?fmtHour(im.taken):'';
-}
-// 🕐 do capítulo: define início e fim do dia = marcos na 1ª e na última foto. Bounds impedem cruzar
-// marcos do meio (início não passa do 1º marco interno; fim não fica antes do último).
-function openChapTimePop(anchor,id){
-  closeStatPop();
-  const ch=S.chapters.find(c=>c.id===id); if(!ch)return;
-  const ims=inChap(ch.id); const nfotos=ims.length; if(!nfotos)return;
-  const last=nfotos-1;
-  const p=el('div','statPop'); statPopEl=p; p.style.width='258px';
-  const cur=clockMins(ch).mins;
-  const startCur=ims[0].clock!=null?ims[0].clock:(cur[0]!=null?Math.round(cur[0]):CLOCK_DEFAULT_START);
-  const endCur=last>0?(ims[last].clock!=null?ims[last].clock:(cur[last]!=null?Math.round(cur[last]):CLOCK_DEFAULT_END)):startCur;
-  const midPins=ims.filter((im,i)=>im.clock!=null&&i!==0&&i!==last).length;
-  // limites: início ≤ 1º marco interno (ou fim); fim ≥ último marco interno (ou início)
-  const sB=clockBounds(ch,0), eB=last>0?clockBounds(ch,last):{lo:null,hi:null};
-  const startMax=Math.min(sB.hi??1439, last>0?endCur:1439);
-  const endMin=Math.max(eB.lo??0, startCur);
-  p.innerHTML=`<h5>Horário do dia · ${nfotos} foto${nfotos===1?'':'s'}</h5>
-    <label class="fLbl">Início do dia (1ª foto)</label>
-    <input type="time" class="fIn" id="ctStart" value="${fmtMin(startCur)}" max="${fmtMin(startMax)}">
-    <label class="fLbl" style="margin-top:8px">Fim do dia (última foto)</label>
-    <input type="time" class="fIn" id="ctEnd" value="${fmtMin(endCur)}" min="${fmtMin(endMin)}"${last<1?' disabled':''}>
-    <div class="ctReadout">1ª <b id="ctA">${fmtMin(startCur)}</b> → última <b id="ctB">${fmtMin(endCur)}</b></div>
-    <p style="margin:8px 2px 0;color:var(--dim);font-size:11px">${midPins?midPins+' foto'+(midPins>1?'s':'')+' com hora fixada no meio.':'Fixe a hora em fotos-chave (🕐 no menu da foto) pra desacelerar trechos como a golden hour.'}</p>
-    <div style="display:flex;gap:6px;margin-top:10px">
-      <button class="mini" id="ctClear" title="Remove todos os marcos deste dia (volta ao EXIF)">Limpar dia</button>
-      <span style="flex:1"></span>
-      <button class="mini primary" id="ctSave">Salvar</button>
-    </div>`;
-  document.body.appendChild(p);
-  const clampV=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
-  p.querySelector('#ctStart').addEventListener('keydown',e=>e.stopPropagation());
-  p.querySelector('#ctEnd').addEventListener('keydown',e=>e.stopPropagation());
-  p.querySelector('#ctStart').oninput=e=>{ const v=parseHHMM(e.target.value); if(v!=null){const cv=clampV(v,0,startMax); ims[0].clock=cv; p.querySelector('#ctA').textContent=fmtMin(cv);} };
-  p.querySelector('#ctEnd').oninput=e=>{ const v=parseHHMM(e.target.value); if(v!=null&&last>0){const cv=clampV(v,endMin,1439); ims[last].clock=cv; p.querySelector('#ctB').textContent=fmtMin(cv);} };
-  p.querySelector('#ctSave').onclick=()=>{
-    const sv=parseHHMM(p.querySelector('#ctStart').value); if(sv!=null)ims[0].clock=clampV(sv,0,startMax);
-    if(last>0){ const ev=parseHHMM(p.querySelector('#ctEnd').value); if(ev!=null)ims[last].clock=clampV(ev,endMin,1439); }
-    delete ch.timeStart; delete ch.timeEnd; delete ch.timeStep;   // limpa o modelo antigo
-    save(); closeStatPop(); renderSequence(); toast('Horário do dia salvo.');
-  };
-  p.querySelector('#ctClear').onclick=()=>{ ims.forEach(im=>{ if(im.clock!=null)im.clock=null; }); delete ch.timeStart; delete ch.timeEnd; delete ch.timeStep; save(); closeStatPop(); renderSequence(); toast('Marcos do dia removidos.'); };
-  const r=anchor.getBoundingClientRect(), pw=p.offsetWidth, ph=p.offsetHeight;
-  let left=Math.min(r.right, innerWidth-8-pw), top=r.bottom+6; if(top+ph>innerHeight-8)top=Math.max(8,r.top-ph-6);
-  p.style.left=Math.max(8,left)+'px'; p.style.top=top+'px';
-  setTimeout(()=>document.addEventListener('pointerdown',statPopOutside,true),0);
 }
 /* remove um capítulo; as fotos dele voltam para “A definir” (arquivos não são tocados) */
 function delChap(id){
