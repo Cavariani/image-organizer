@@ -396,16 +396,33 @@ function closeTextModal(){
   $('#textModal').classList.remove('show'); render();
 }
 
-// prévia: toca a fala como no Recall, num overlay por cima do modal
-let previewCtrl=null;
-function previewFala(fala){
-  const box=$('#vnPreviewText');
+// prévia: overlay fullscreen que toca uma sequência de falas como no Recall (opcionalmente com a foto
+// de fundo). Usada tanto pelo ▶ do editor (1 fala, sem foto) quanto pelo duplo-clique na grade (foto + texts).
+const MOOD_FILTER={warm:'saturate(1.28) sepia(.16) brightness(1.03)',cold:'saturate(1.06) contrast(1.04) hue-rotate(14deg)',night:'brightness(.66) saturate(.82) contrast(1.06)',bw:'grayscale(1) contrast(1.06)'};
+let PV={falas:[],i:0,ctrl:null};
+function pvStart(falas, im){
+  pvKill();
+  PV={falas:(falas||[]).map(normalizeFala).filter(f=>falaPlain(f)), i:0, ctrl:null};
+  const img=$('#vnPreviewImg');
+  if(im){ img.style.display=''; img.src=im.url; img.style.filter=(im.scene&&MOOD_FILTER[im.scene.mood])||'none'; }
+  else img.style.display='none';
+  $('#vnPreviewText').textContent='';
   $('#vnPreview').classList.add('show');
-  if(previewCtrl)previewCtrl.destroy();
-  previewCtrl=renderFala(box, normalizeFala(fala), ()=>{});
+  if(PV.falas.length)pvPlay();
 }
-function previewSkip(){ if(previewCtrl&&!previewCtrl.done){previewCtrl.complete();return;} closePreview(); }
-function closePreview(){ if(previewCtrl){previewCtrl.destroy();previewCtrl=null;} $('#vnPreview').classList.remove('show'); }
+function pvPlay(){ PV.ctrl=renderFala($('#vnPreviewText'), PV.falas[PV.i], ()=>{}); }
+function previewFala(fala){ pvStart([fala], null); }        // ▶ do editor: 1 fala, sem foto
+function openPhotoPreview(name){                            // duplo-clique: foto + suas falas
+  const im=S.images.find(x=>x.name===name); if(!im)return;
+  pvStart(im.texts||[], im);
+}
+function previewSkip(){                                     // → / clique: completa a fala, ou avança, ou fecha
+  if(PV.ctrl&&!PV.ctrl.done){ PV.ctrl.complete(); return; }
+  if(PV.i<PV.falas.length-1){ PV.i++; pvPlay(); return; }
+  closePreview();
+}
+function pvKill(){ if(PV.ctrl){PV.ctrl.destroy();PV.ctrl=null;} }
+function closePreview(){ pvKill(); $('#vnPreview').classList.remove('show'); const img=$('#vnPreviewImg'); if(img){img.removeAttribute('src');img.style.display='none';} }
 
 // velocidade global de digitação
 function syncVnSpeed(){ const s=getGlobalSpeed(); const r=$('#vnSpeed'); if(r)r.value=String(s); const l=$('#vnSpeedLbl'); if(l)l.textContent=s.toFixed(1)+'×'; }
@@ -476,7 +493,7 @@ function renderSequence(){
   c.querySelectorAll('[data-editstat]').forEach(b=>b.addEventListener('click',()=>openStatModal(b.dataset.editstat)));
   c.querySelector('[data-newstat]')?.addEventListener('click',()=>openStatModal(null));
 
-  // tiles (limpos: clique amplia, círculo seleciona, ações vão pra barra)
+  // tiles: 1 clique = menu de ações no cursor · duplo clique = abrir fullscreen com o texto (como no Recall)
   c.querySelectorAll('.cardBlock').forEach(b=>{
     b.addEventListener('click',()=>openTextModal(b.dataset.cardfor,'card'));
   });
@@ -485,7 +502,14 @@ function renderSequence(){
     t.addEventListener('click',e=>{
       if(e.target.closest('[data-selbox]')||e.target.closest('[data-idx]'))return;
       if(dndBlocksClick())return;
-      openLightbox(S.viewList,name);
+      const x=e.clientX, y=e.clientY;
+      clearTimeout(tileClickTimer);
+      tileClickTimer=setTimeout(()=>openTileMenu(x,y,name),240);   // espera: se vier 2º clique, vira preview
+    });
+    t.addEventListener('dblclick',e=>{
+      if(e.target.closest('[data-selbox]')||e.target.closest('[data-idx]'))return;
+      clearTimeout(tileClickTimer); closeTileMenu();
+      openPhotoPreview(name);
     });
     const idxEl=t.querySelector('[data-idx]');
     if(idxEl)idxEl.addEventListener('click',e=>{e.stopPropagation();startIdxEdit(idxEl,name);});
@@ -609,6 +633,45 @@ function openClockPin(anchor,name){
   let left=Math.min(r.left, innerWidth-8-pw), top=r.top-ph-8; if(top<8)top=r.bottom+8;
   p.style.left=Math.max(8,left)+'px'; p.style.top=top+'px';
   setTimeout(()=>document.addEventListener('pointerdown',statPopOutside,true),0);
+}
+
+// menu de contexto da miniatura (1 clique): mesmas ações da barra, ancorado no cursor
+let tileClickTimer=null, tileMenuEl=null;
+function closeTileMenu(){ if(tileMenuEl){tileMenuEl.remove();tileMenuEl=null;document.removeEventListener('pointerdown',tileMenuOutside,true);} }
+function tileMenuOutside(e){ if(tileMenuEl&&!tileMenuEl.contains(e.target))closeTileMenu(); }
+function openTileMenu(x,y,name){
+  closeStatPop(); closeTileMenu();
+  const im=S.images.find(z=>z.name===name); if(!im)return;
+  const at=()=>({getBoundingClientRect:()=>({left:x,right:x,top:y,bottom:y,width:0,height:0})}); // âncora falsa no cursor
+  const m=el('div','tileMenu'); tileMenuEl=m;
+  const dests=[...S.chapters.map(ch=>({id:ch.id,name:ch.name})),{id:UN,name:'📥 A definir'},{id:REJ,name:'🗑 Rejeitadas'}]
+    .filter(o=>o.id!==im.chap).map(o=>`<option value="${esc(o.id)}">${esc(o.name)}</option>`).join('');
+  m.innerHTML=
+    `<button data-m="open">⤢ Abrir (com texto)</button>`+
+    `<button data-m="text">💬 Textos &amp; cena</button>`+
+    `<button data-m="music">🎵 Música</button>`+
+    `<button data-m="stats">✦ Stats</button>`+
+    `<button data-m="tempo">⏱ Tempo</button>`+
+    `<button data-m="clock">🕐 Fixar hora</button>`+
+    `<div class="tmSep"></div>`+
+    `<select data-m-move><option value="">↦ Mover para…</option>${dests}</select>`+
+    `<button class="danger" data-m="reject">🗑 ${im.rej?'Restaurar':'Rejeitar'}</button>`;
+  document.body.appendChild(m);
+  const mw=m.offsetWidth, mh=m.offsetHeight;
+  m.style.left=Math.max(8,Math.min(x, innerWidth-8-mw))+'px';
+  m.style.top=Math.max(8,Math.min(y, innerHeight-8-mh))+'px';
+  m.querySelector('[data-m-move]').addEventListener('change',e=>{ const d=e.target.value; if(d){closeTileMenu();moveToChapter([name],d);} });
+  m.querySelectorAll('[data-m]').forEach(b=>b.addEventListener('click',()=>{
+    const a=b.dataset.m; closeTileMenu();
+    if(a==='open')openPhotoPreview(name);
+    else if(a==='text')openTextModal(name);
+    else if(a==='music')openMusicForPhoto(name);
+    else if(a==='stats')openStatPop(at(),name);
+    else if(a==='tempo')openTempoPop(at(),name);
+    else if(a==='clock')openClockPin(at(),name);
+    else if(a==='reject'){ im.rej?unreject(im):reject(im); renderSequence();updateCounts(); }
+  }));
+  setTimeout(()=>document.addEventListener('pointerdown',tileMenuOutside,true),0);
 }
 
 function renderSidebar(){
