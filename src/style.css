@@ -326,14 +326,17 @@
   .tile:hover .musBtn{display:inline-flex}
   .tile .musBtn.has{display:inline-flex;background:rgba(78,203,141,.85)}
   /* dialog box no Recall: gradiente BEM leve só pra legibilidade, sem caixa dura */
-  .rcVN{position:absolute;left:0;right:0;bottom:0;z-index:5;display:none;padding:0 0 clamp(70px,12vh,120px);pointer-events:none;
-    background:linear-gradient(to top,rgba(0,0,0,.62) 0%,rgba(0,0,0,.34) 34%,rgba(0,0,0,.08) 66%,transparent 100%)}
+  /* faixa de diálogo ancorada na base da tela: scrim alto e gradual (some pra cima), texto perto
+     da borda inferior — fica coerente com qualquer proporção de foto (inclusive 9:16 vertical) */
+  .rcVN{position:absolute;left:0;right:0;bottom:0;z-index:5;display:none;pointer-events:none;
+    padding:clamp(90px,20vh,220px) 0 clamp(30px,5vh,56px);
+    background:linear-gradient(to top,rgba(0,0,0,.82) 0%,rgba(0,0,0,.66) 22%,rgba(0,0,0,.34) 52%,rgba(0,0,0,.10) 78%,transparent 100%)}
   .rcVN.on{display:block}
   .rcVN.on.hidden{display:none}
-  .rc.fs .rcVN{padding-bottom:clamp(48px,8vh,90px)}
-  .rcVNinner{max-width:860px;margin:0 auto;padding:0 40px}
-  .rcVNtext{color:#fff;font-size:clamp(18px,2.5vw,28px);line-height:1.55;font-weight:450;letter-spacing:.005em;
-    text-shadow:0 2px 16px rgba(0,0,0,.55),0 1px 3px rgba(0,0,0,.6);min-height:1.55em;white-space:pre-wrap}
+  .rc.fs .rcVN{padding-bottom:clamp(24px,4vh,44px)}
+  .rcVNinner{max-width:820px;margin:0 auto;padding:0 clamp(20px,5vw,48px);text-align:center}
+  .rcVNtext{color:#fff;font-size:clamp(18px,2.4vw,27px);line-height:1.5;font-weight:450;letter-spacing:.005em;
+    text-shadow:0 2px 16px rgba(0,0,0,.6),0 1px 3px rgba(0,0,0,.7);min-height:1.5em;white-space:pre-wrap}
   .rcVNcaret{display:inline-block;width:.5em;margin-left:1px;color:rgba(255,255,255,.85);animation:rcCaret 1s steps(1) infinite}
   @keyframes rcCaret{50%{opacity:0}}
   .rcVNhint{margin-top:14px;font-size:12px;color:rgba(255,255,255,.45);letter-spacing:.02em;transition:opacity .3s}
