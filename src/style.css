@@ -367,6 +367,9 @@
   .vnPreview.show{display:block}
   .vnPreview .vnPreviewImg{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:none}
   .vnPreviewClose{position:absolute;top:16px;right:16px;z-index:2;color:#fff;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22)}
+  .vnPvBar{position:absolute;top:16px;left:16px;z-index:2;display:flex;gap:8px}
+  .vnPvBar .mini{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);color:#fff}
+  .vnPvBar select.mini{background:rgba(20,22,25,.9)}
 
   /* menu de contexto da miniatura (1 clique) */
   .tileMenu{position:fixed;z-index:55;background:var(--panel);border:1px solid var(--line);border-radius:10px;

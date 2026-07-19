@@ -436,7 +436,21 @@ function previewFala(fala){
 function openPhotoPreview(name){
   const list=(S.viewList||[]).map(im=>im.name);
   PV.list=list; PV.idx=Math.max(0,list.indexOf(name));
+  $('#vnPvMove').innerHTML='<option value="">↦ Mover para dia…</option>'+
+    S.chapters.map(ch=>`<option value="${esc(ch.id)}">${esc(ch.name)}</option>`).join('');
   $('#vnPreview').classList.add('show');
+  pvShow();
+}
+// da prévia: manda a foto atual para um dia ou "a definir" (tira da rejeição), pula pra próxima
+function pvMove(dest){
+  const im=S.images.find(x=>x.name===PV.list[PV.idx]); if(!im)return;
+  if(dest===UN)unassign(im); else assign(im,dest);      // ambos tiram o rej
+  const label=dest===UN?'A definir':(S.chapters.find(c=>c.id===dest)||{}).name||'';
+  PV.list.splice(PV.idx,1);
+  renderSequence(); updateCounts();                     // atualiza a grade atrás
+  toast('→ '+label);
+  if(!PV.list.length){ closePreview(); return; }
+  if(PV.idx>=PV.list.length)PV.idx=PV.list.length-1;
   pvShow();
 }
 function pvShow(){
@@ -2308,6 +2322,9 @@ $('#cenaMood').onchange=(e)=>{const im=currentTextIm(); if(im){im.scene=im.scene
 $('#cenaHold').onchange=(e)=>{const im=currentTextIm(); if(im){im.scene=im.scene||{}; im.scene.hold=+e.target.value; save();}};
 $('#vnPreview').onclick=previewSkip;                 // clicar na prévia: pula/fecha
 $('#vnPreviewClose').onclick=(e)=>{e.stopPropagation();closePreview();};
+$('#vnPvBar').onclick=(e)=>e.stopPropagation();      // a barra não conta como clique de "passar texto"
+$('#vnPvUndef').onclick=(e)=>{e.stopPropagation();pvMove(UN);};
+$('#vnPvMove').onchange=(e)=>{const d=e.target.value; if(d)pvMove(d); e.target.value='';};
 document.querySelectorAll('.modal').forEach(m=>m.addEventListener('click',e=>{
   if(e.target!==m)return;
   $('#musAudio').pause();               // clicar fora não pode deixar a prévia tocando sozinha
