@@ -27,7 +27,7 @@ async function idbSet(k,v){const db=await idb();return new Promise((res,rej)=>{c
 let saveTimer=null;
 function save(){clearTimeout(saveTimer);saveTimer=setTimeout(async()=>{
   const man={};
-  for(const im of S.images) man[im.name]={chap:im.chap,order:im.order,rej:im.rej,taken:im.taken,stats:im.stats,texts:im.texts,cardAfter:im.cardAfter,scene:im.scene,music:im.music,pace:im.pace,clock:im.clock};
+  for(const im of S.images) man[im.name]={chap:im.chap,order:im.order,rej:im.rej,taken:im.taken,stats:im.stats,texts:im.texts,cardBefore:im.cardBefore,cardAfter:im.cardAfter,scene:im.scene,music:im.music,pace:im.pace,clock:im.clock};
   await idbSet('manifest',man);
   await idbSet('chapters',S.chapters);
   await idbSet('stats',S.stats);
@@ -71,7 +71,7 @@ async function loadFolder(handle){
     imgs.push({name,handle:ent,url:URL.createObjectURL(file),
       chap:(m.chap!==undefined)?m.chap:null, order:(m.order!==undefined)?m.order:null,
       rej:!!m.rej, hash:null, taken:m.taken, stats:m.stats||{},
-      texts:m.texts||[], cardAfter:m.cardAfter||[], scene:m.scene||{}, music:m.music||null, pace:m.pace||null, clock:(m.clock??null)});   // undefined = ainda não lido; 0 = lido, sem data
+      texts:m.texts||[], cardBefore:m.cardBefore||[], cardAfter:m.cardAfter||[], scene:m.scene||{}, music:m.music||null, pace:m.pace||null, clock:(m.clock??null)});   // undefined = ainda não lido; 0 = lido, sem data
   }
   imgs.sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));
   imgs.forEach((im,i)=>{if(im.order==null)im.order=i;}); // semeia ordem por nome p/ imagens sem manifesto
@@ -249,7 +249,7 @@ function bumpImgStat(im,id,delta){
 function tindHtml(im){
   const sceneSet=im.scene&&((im.scene.fx&&im.scene.fx!=='crossfade')||im.scene.mood);
   return statBadgesHTML(im)
-    +(((im.texts&&im.texts.length)||(im.cardAfter&&im.cardAfter.length))?'<span class="ti">💬</span>':'')
+    +(((im.texts&&im.texts.length)||(im.cardAfter&&im.cardAfter.length)||(im.cardBefore&&im.cardBefore.length))?'<span class="ti">💬</span>':'')
     +((im.music&&im.music.file)?'<span class="ti">🎵</span>':'')
     +(sceneSet?'<span class="ti">🎬</span>':'');
 }
@@ -339,18 +339,22 @@ let vnEditors:Editor[]=[];   // instâncias TipTap vivas no modal (destruídas a
 const VN_SIZES=[['','Tam.'],['0.8em','P'],['1em','M'],['1.3em','G'],['1.7em','GG']];
 const VN_COLORS=['#ffffff','#ff9ec7','#ffd166','#8ecae6','#a0e8af','#ff6b6b','#c8b6ff'];
 
-// mode: 'photo' (falas sobre a foto + cena + tela preta) | 'card' (só a tela preta, focado)
+// mode: 'photo' (falas + cena + tela preta depois) | 'cardAfter' | 'cardBefore' (só a tela preta, focado)
+function cardArrOf(im){ return textEditMode==='cardBefore'?im.cardBefore:im.cardAfter; }
 function openTextModal(name, mode){
   mode=mode||'photo';
   const im=S.images.find(x=>x.name===name); if(!im)return;
+  if(mode==='card')mode='cardAfter';                 // compat
   textEditName=name; textEditMode=mode;
-  im.texts=(im.texts||[]).map(normalizeFala);       // migra falas legadas p/ o formato rico
+  im.texts=(im.texts||[]).map(normalizeFala);        // migra falas legadas p/ o formato rico
+  im.cardBefore=(im.cardBefore||[]).map(normalizeFala);
   im.cardAfter=(im.cardAfter||[]).map(normalizeFala);
-  const card=mode==='card';
-  $('#textModalT').textContent=card?'Tela preta depois de '+name:'Textos — '+name;
+  const card=mode!=='photo';
+  const arr=cardArrOf(im);                            // em modo foto, a seção "tela preta" edita a de depois
+  $('#textModalT').textContent=mode==='cardBefore'?'Tela preta ANTES de '+name:(mode==='cardAfter'?'Tela preta DEPOIS de '+name:'Textos — '+name);
   $('#textIntro').style.display=card?'none':'';
-  $('#cenaRow').style.display=card?'none':'';        // cena é da foto, não do cartão
-  $('#textOverSec').style.display=card?'none':'';    // "falas sobre a foto" só no modo foto
+  $('#cenaRow').style.display=card?'none':'';         // cena é da foto, não do cartão
+  $('#textOverSec').style.display=card?'none':'';     // "falas sobre a foto" só no modo foto
   $('#textCardLbl').textContent=card?'Falas desta tela preta':'Tela preta depois desta foto';
   $('#textCardDel').style.display=card?'inline-flex':'none';
   const sc=im.scene||{};                              // sincroniza a linha "Cena desta foto"
@@ -359,8 +363,8 @@ function openTextModal(name, mode){
   $('#cenaHold').value=String(sc.hold||0);
   syncVnSpeed();
   if(!card)renderFalaCards('#textOver', im.texts);
-  if(card&&!im.cardAfter.length)im.cardAfter.push(normalizeFala(''));   // abre já com uma fala pronta
-  renderFalaCards('#textCard', im.cardAfter);
+  if(card&&!arr.length)arr.push(normalizeFala(''));   // abre já com uma fala pronta
+  renderFalaCards('#textCard', arr);
   $('#textModal').classList.add('show');
 }
 function destroyVnEditors(){ vnEditors.forEach(ed=>{try{ed.destroy();}catch(e){}}); vnEditors=[]; }
@@ -404,13 +408,14 @@ function renderFalaCards(sel, arr){
 function addTextRow(which){
   const im=S.images.find(x=>x.name===textEditName); if(!im)return;
   if(which==='over'){im.texts.push(normalizeFala('')); renderFalaCards('#textOver',im.texts);}
-  else{im.cardAfter.push(normalizeFala('')); renderFalaCards('#textCard',im.cardAfter);}
+  else{const arr=cardArrOf(im); arr.push(normalizeFala('')); renderFalaCards('#textCard',arr);}
   save();
 }
 function closeTextModal(){
   const im=S.images.find(x=>x.name===textEditName);
   if(im){ // descarta falas vazias ao concluir
     im.texts=(im.texts||[]).map(normalizeFala).filter(f=>falaPlain(f));
+    im.cardBefore=(im.cardBefore||[]).map(normalizeFala).filter(f=>falaPlain(f));
     im.cardAfter=(im.cardAfter||[]).map(normalizeFala).filter(f=>falaPlain(f));
     save();
   }
@@ -497,10 +502,19 @@ function renderSequence(){
     const activeCh=(S.active!==UN&&S.active!==REJ)?S.chapters.find(c=>c.id===S.active):null;
     const activeMins=activeCh?clockMins(activeCh).mins:null;
     const clkAt=(pos)=>activeMins?activeMins[pos]:null;
+    const cardBlockHtml=(im,which)=>{                       // bloco preto (tela de texto) na grade
+      const arr=((which==='before'?im.cardBefore:im.cardAfter)||[]).filter(f=>falaPlain(f));
+      if(!arr.length||im.rej)return '';
+      const prev=esc(falaPlain(arr[0]).slice(0,120));
+      return `<div class="cardBlock" data-cardfor="${esc(im.name)}" data-cardwhich="${which}" title="Tela preta — clique para editar">
+        <div class="cbInner"><span class="cbTag">▦ tela preta</span><span class="cbText">${prev||'(vazio)'}</span>${arr.length>1?`<span class="cbMore">+${arr.length-1} fala${arr.length-1>1?'s':''}</span>`:''}</div>
+      </div>`;
+    };
     list.forEach((im,i)=>{
       const ind=tindHtml(im);
       const cm=clkAt(i); const clk=cm!=null?fmtMin(cm):'';   // hora calculada, mostrada no próprio tile
       const clkBadge=clk?`<span class="tclock${im.clock!=null?' pin':''}" title="${im.clock!=null?'Hora fixada (marco)':'Hora interpolada'}">${im.clock!=null?'🕐 ':''}${clk}</span>`:'';
+      html+=cardBlockHtml(im,'before');                      // tela preta ANTES desta foto
       html+=`<div class="tile ${S.sel.has(im.name)?'sel':''} ${im.rej?'rej':''}" data-name="${esc(im.name)}">
         <img src="${im.url}" alt="" loading="lazy">
         <span class="idx"${S.active!==REJ?' data-idx style="cursor:pointer" title="Mover para posição"':''}>${i+1}</span>
@@ -508,15 +522,9 @@ function renderSequence(){
         <div class="selbox" data-selbox title="Selecionar">✓</div>
         <span class="rejbadge">rej</span>
         ${ind?`<div class="tind">${ind}</div>`:''}
+        <span class="edgeHint edgeHintL">＋</span><span class="edgeHint edgeHintR">＋</span>
       </div>`;
-      // tela preta depois desta foto: bloco preto visível na grade, clicável para editar
-      const cards=(im.cardAfter||[]).filter(f=>falaPlain(f));
-      if(cards.length&&!im.rej){
-        const prev=esc(falaPlain(cards[0]).slice(0,120));
-        html+=`<div class="cardBlock" data-cardfor="${esc(im.name)}" title="Tela preta — clique para editar">
-          <div class="cbInner"><span class="cbTag">▦ tela preta</span><span class="cbText">${prev||'(vazio)'}</span>${cards.length>1?`<span class="cbMore">+${cards.length-1} fala${cards.length-1>1?'s':''}</span>`:''}</div>
-        </div>`;
-      }
+      html+=cardBlockHtml(im,'after');                       // tela preta DEPOIS desta foto
     });
     html+='</div>';
   }
@@ -530,21 +538,27 @@ function renderSequence(){
   c.querySelectorAll('[data-editstat]').forEach(b=>b.addEventListener('click',()=>openStatModal(b.dataset.editstat)));
   c.querySelector('[data-newstat]')?.addEventListener('click',()=>openStatModal(null));
 
-  // tiles: 1 clique = menu de ações no cursor · duplo clique = abrir fullscreen com o texto (como no Recall)
+  // tiles: borda esq/dir = inserir tela preta antes/depois · centro: 1 clique menu · 2 cliques preview
   c.querySelectorAll('.cardBlock').forEach(b=>{
-    b.addEventListener('click',()=>openTextModal(b.dataset.cardfor,'card'));
+    b.addEventListener('click',()=>openTextModal(b.dataset.cardfor, b.dataset.cardwhich==='before'?'cardBefore':'cardAfter'));
   });
+  const edgeZone=(t,e)=>{ const r=t.getBoundingClientRect(); const fx=(e.clientX-r.left)/r.width; return fx<0.2?'L':fx>0.8?'R':null; };
   c.querySelectorAll('.tile').forEach(t=>{
     const name=t.dataset.name;
+    t.addEventListener('mousemove',e=>{ const z=edgeZone(t,e); t.classList.toggle('edgeL',z==='L'); t.classList.toggle('edgeR',z==='R'); });
+    t.addEventListener('mouseleave',()=>t.classList.remove('edgeL','edgeR'));
     t.addEventListener('click',e=>{
       if(e.target.closest('[data-selbox]')||e.target.closest('[data-idx]'))return;
       if(dndBlocksClick())return;
+      const z=edgeZone(t,e);
+      if(z){ clearTimeout(tileClickTimer); openTextModal(name, z==='L'?'cardBefore':'cardAfter'); return; }  // borda: cria tela preta
       const x=e.clientX, y=e.clientY;
       clearTimeout(tileClickTimer);
-      tileClickTimer=setTimeout(()=>openTileMenu(x,y,name),240);   // espera: se vier 2º clique, vira preview
+      tileClickTimer=setTimeout(()=>openTileMenu(x,y,name),240);   // centro: menu (ou preview no 2º clique)
     });
     t.addEventListener('dblclick',e=>{
       if(e.target.closest('[data-selbox]')||e.target.closest('[data-idx]'))return;
+      if(edgeZone(t,e))return;                                     // duplo clique na borda não abre preview
       clearTimeout(tileClickTimer); closeTileMenu();
       openPhotoPreview(name);
     });
@@ -1163,7 +1177,7 @@ function lbRemoveFromSeq(){
    formato do idb, então importar é só regravar o idb e reaplicar por nome de arquivo. */
 function sessionManifest(){
   const man={};
-  for(const im of S.images) man[im.name]={chap:im.chap,order:im.order,rej:im.rej,taken:im.taken,stats:im.stats,texts:im.texts,cardAfter:im.cardAfter,scene:im.scene,music:im.music,pace:im.pace,clock:im.clock};
+  for(const im of S.images) man[im.name]={chap:im.chap,order:im.order,rej:im.rej,taken:im.taken,stats:im.stats,texts:im.texts,cardBefore:im.cardBefore,cardAfter:im.cardAfter,scene:im.scene,music:im.music,pace:im.pace,clock:im.clock};
   return man;
 }
 function sessionData(){
@@ -1563,6 +1577,7 @@ function rcEnd(){
 function recallList(){
   const out=[];
   for(const ch of S.chapters) for(const im of inChap(ch.id)){
+    if(im.cardBefore&&im.cardBefore.length) out.push({card:true,texts:im.cardBefore.slice(),ch,beforeName:im.name});
     out.push({im,ch});
     if(im.cardAfter&&im.cardAfter.length) out.push({card:true,texts:im.cardAfter.slice(),ch,afterName:im.name});
   }
@@ -2313,7 +2328,7 @@ $('#statName').addEventListener('keydown',e=>{e.stopPropagation();if(e.key==='En
 $('#statEmoji').addEventListener('keydown',e=>e.stopPropagation());
 $('#textOverAdd').onclick=()=>addTextRow('over');
 $('#textCardAdd').onclick=()=>addTextRow('card');
-$('#textCardDel').onclick=()=>{ const im=S.images.find(x=>x.name===textEditName); if(im){im.cardAfter=[];save();} destroyVnEditors(); $('#textModal').classList.remove('show'); render(); };
+$('#textCardDel').onclick=()=>{ const im=S.images.find(x=>x.name===textEditName); if(im){ if(textEditMode==='cardBefore')im.cardBefore=[]; else im.cardAfter=[]; save(); } destroyVnEditors(); $('#textModal').classList.remove('show'); render(); };
 $('#textDone').onclick=closeTextModal;
 $('#vnSpeed').oninput=(e)=>{ setGlobalSpeed(+e.target.value); syncVnSpeed(); };
 function currentTextIm(){ return S.images.find(x=>x.name===textEditName); }
