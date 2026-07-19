@@ -426,10 +426,12 @@ function renderSequence(){
     const clkAt=(pos)=>{
       if(!activeCh||!anchorsA||!anchorsA.length)return null;
       if(anchorsA.length===1){const a=anchorsA[0];return a.min+(pos-a.pos)*(activeCh.timeStep??CLOCK_DEFAULT_STEP);}
-      if(pos<=anchorsA[0].pos)return anchorsA[0].min;
-      const L=anchorsA[anchorsA.length-1]; if(pos>=L.pos)return L.min;
+      const f=anchorsA[0], L=anchorsA[anchorsA.length-1];
+      const sl=(b,a)=>b.pos!==a.pos?(b.min-a.min)/(b.pos-a.pos):0;
+      if(pos<=f.pos)return f.min+(pos-f.pos)*sl(anchorsA[1],f);
+      if(pos>=L.pos)return L.min+(pos-L.pos)*sl(L,anchorsA[anchorsA.length-2]);
       for(let k=0;k<anchorsA.length-1;k++){const a=anchorsA[k],b=anchorsA[k+1]; if(pos>=a.pos&&pos<=b.pos)return a.min+(b.min-a.min)*(pos-a.pos)/(b.pos-a.pos);}
-      return anchorsA[0].min;
+      return f.min;
     };
     list.forEach((im,i)=>{
       const ind=tindHtml(im);
@@ -653,36 +655,43 @@ function editChap(id){
   inp.addEventListener('click',e=>e.stopPropagation());
 }
 
-/* ---------- RELÓGIO SINTÉTICO POR CAPÍTULO (marcos + interpolação) ----------
-   O relógio de cada capítulo vem de MARCOS: horários cravados em fotos-chave. A foto 1 usa
-   ch.timeStart (a "hora de início"); qualquer foto pode fixar im.clock (min desde 0h). A hora de
-   uma foto entre dois marcos é interpolada linearmente pela posição; assim, de dia (muitas fotos,
-   poucos minutos entre elas) o relógio corre e na golden hour (poucas fotos) ele desacelera —
-   automático. Com só 1 marco, cai na velocidade ch.timeStep. Sem nenhum marco, usa o EXIF. */
+/* ---------- RELÓGIO SINTÉTICO POR CAPÍTULO (início + fim + marcos) ----------
+   O dia vai de uma HORA INICIAL (ch.timeStart, foto 1) a uma HORA FINAL (ch.timeEnd, última foto).
+   Entre elas o relógio interpola pela posição da foto; fotos-chave podem fixar im.clock e "dobram"
+   a linha (golden hour desacelera, etc.). Como início E fim são âncoras, a última foto SEMPRE tem
+   hora — nunca congela. Sem timeStart/timeEnd, cai no EXIF. (timeStep = modelo antigo, migrado.) */
 const CLOCK_DEFAULT_START=14*60;   // 14:00
-const CLOCK_DEFAULT_STEP=4;        // 4 min por foto (usado só quando há 1 marco apenas)
+const CLOCK_DEFAULT_END=23*60;     // 23:00
+const CLOCK_DEFAULT_STEP=4;        // min/foto (só p/ migrar capítulos do modelo antigo)
 function fmtMin(total){ const m=((Math.round(total)%1440)+1440)%1440; return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0'); }
 function parseHHMM(s){ const m=/^(\d{1,2}):(\d{2})$/.exec(s||''); if(!m)return null; const h=+m[1],mm=+m[2]; if(h>23||mm>59)return null; return h*60+mm; }
-// marcos do capítulo, ordenados por posição: foto 1 = timeStart; fotos com im.clock = seus horários
+// marcos do capítulo por posição: foto 1 = timeStart, última = timeEnd, fotos com im.clock no meio
 function chapAnchors(ch){
   const ims=inChap(ch.id);
+  const last=ims.length-1;
   const map=new Map();
   if(ch.timeStart!=null)map.set(0,ch.timeStart);
-  ims.forEach((im,i)=>{ if(im.clock!=null)map.set(i,im.clock); });  // im.clock vence no seu ponto
+  if(last>0){
+    if(ch.timeEnd!=null)map.set(last,ch.timeEnd);
+    else if(ch.timeStart!=null&&ch.timeStep!=null)map.set(last,ch.timeStart+last*ch.timeStep); // migra o modelo antigo
+  }
+  ims.forEach((im,i)=>{ if(im.clock!=null)map.set(i,im.clock); });  // marco fixado na foto vence
   return {ims,anchors:[...map.entries()].map(([pos,min])=>({pos,min})).sort((a,b)=>a.pos-b.pos)};
 }
-// minutos (desde 0h) de uma foto na posição pos, dado os marcos do capítulo; null = sem relógio
+// minutos (desde 0h) de uma foto na posição pos; interpola entre marcos e extrapola nas pontas (nunca "trava")
 function clockMinAt(ch,pos){
   const {anchors}=chapAnchors(ch);
   if(!anchors.length)return null;
   if(anchors.length===1){ const a=anchors[0]; return a.min + (pos-a.pos)*(ch.timeStep??CLOCK_DEFAULT_STEP); }
-  if(pos<=anchors[0].pos)return anchors[0].min;                     // antes do 1º marco: fixa nele
-  if(pos>=anchors[anchors.length-1].pos)return anchors[anchors.length-1].min; // depois do último: fixa nele
+  const first=anchors[0], lastA=anchors[anchors.length-1];
+  const slope=(b,a)=>b.pos!==a.pos?(b.min-a.min)/(b.pos-a.pos):0;
+  if(pos<=first.pos)  return first.min + (pos-first.pos)*slope(anchors[1],first);          // antes: segue a 1ª rampa
+  if(pos>=lastA.pos)  return lastA.min + (pos-lastA.pos)*slope(lastA,anchors[anchors.length-2]); // depois: segue a última rampa
   for(let k=0;k<anchors.length-1;k++){
     const a=anchors[k], b=anchors[k+1];
     if(pos>=a.pos&&pos<=b.pos)return a.min + (b.min-a.min)*(pos-a.pos)/(b.pos-a.pos);
   }
-  return anchors[0].min;
+  return first.min;
 }
 // hora (HH:MM) de uma foto: sintética se o capítulo tiver marcos; senão cai no EXIF
 function photoClock(im,ch){
@@ -699,40 +708,30 @@ function openChapTimePop(anchor,id){
   const ch=S.chapters.find(c=>c.id===id); if(!ch)return;
   const nfotos=inChap(ch.id).length;
   const p=el('div','statPop'); statPopEl=p; p.style.width='258px';
-  const pinned=inChap(ch.id).filter(im=>im.clock!=null).length;   // marcos fixados em fotos (fora a 1ª)
-  // última hora prevista: interpola do start (preview) + marcos das fotos até a última posição
-  const previewLast=(startMin,stepMin)=>{
-    if(nfotos<=1)return startMin;
-    const map=new Map([[0,startMin]]);
-    inChap(ch.id).forEach((im,i)=>{ if(im.clock!=null)map.set(i,im.clock); });
-    const A=[...map.entries()].map(([pos,min])=>({pos,min})).sort((a,b)=>a.pos-b.pos);
-    const pos=nfotos-1;
-    if(A.length===1)return startMin+pos*stepMin;
-    if(pos>=A[A.length-1].pos)return A[A.length-1].min;
-    for(let k=0;k<A.length-1;k++){const a=A[k],b=A[k+1]; if(pos>=a.pos&&pos<=b.pos)return a.min+(b.min-a.min)*(pos-a.pos)/(b.pos-a.pos);}
-    return A[A.length-1].min;
-  };
+  const pinned=inChap(ch.id).filter(im=>im.clock!=null).length;   // marcos fixados em fotos do meio
+  // fim efetivo pré-preenchido: timeEnd, ou migrado do modelo antigo (start+passo), ou default
+  const start0=ch.timeStart??CLOCK_DEFAULT_START;
+  const end0=ch.timeEnd ?? (ch.timeStep!=null&&nfotos>1?start0+(nfotos-1)*ch.timeStep:CLOCK_DEFAULT_END);
   const draw=()=>{
-    const start=ch.timeStart??CLOCK_DEFAULT_START, step=ch.timeStep??CLOCK_DEFAULT_STEP;
-    const last=fmtMin(previewLast(start,step));
+    const start=ch.timeStart??CLOCK_DEFAULT_START, end=ch.timeEnd??end0;
     p.innerHTML=`<h5>Tempo do capítulo · ${nfotos} foto${nfotos===1?'':'s'}</h5>
       <label class="fLbl">Hora da 1ª foto</label>
       <input type="time" class="fIn" id="ctStart" value="${fmtMin(start)}">
-      <label class="fLbl" style="margin-top:8px">Velocidade <span style="color:var(--mut);font-weight:400;text-transform:none;letter-spacing:0">${step} min/foto${pinned?' · ignorada (há marcos)':''}</span></label>
-      <input type="range" id="ctStep" min="0" max="30" step="0.5" value="${step}" style="width:100%"${pinned?' disabled':''}>
-      <div class="ctReadout">1ª <b>${fmtMin(start)}</b> → última <b>${last}</b></div>
-      <p style="margin:8px 2px 0;color:var(--dim);font-size:11px">${pinned?pinned+' foto'+(pinned>1?'s':'')+' com hora fixada.':'Fixe a hora em fotos-chave (botão 🕐 na barra) pra variar a velocidade no dia.'}</p>
+      <label class="fLbl" style="margin-top:8px">Hora da última foto</label>
+      <input type="time" class="fIn" id="ctEnd" value="${fmtMin(end)}"${nfotos<=1?' disabled':''}>
+      <div class="ctReadout">1ª <b>${fmtMin(start)}</b> → última <b id="ctLast">${fmtMin(end)}</b></div>
+      <p style="margin:8px 2px 0;color:var(--dim);font-size:11px">${pinned?pinned+' foto'+(pinned>1?'s':'')+' com hora fixada no meio (dobram a linha).':'O dia distribui do início ao fim. Fixe a hora em fotos-chave (🕐 na barra) pra desacelerar trechos como a golden hour.'}</p>
       <div style="display:flex;gap:6px;margin-top:10px">
-        <button class="mini" id="ctClear" title="Volta ao relógio padrão">Limpar</button>
+        <button class="mini" id="ctClear" title="Volta ao relógio padrão (EXIF)">Limpar</button>
         <span style="flex:1"></span>
         <button class="mini primary" id="ctSave">Salvar</button>
       </div>`;
     p.querySelector('#ctStart').addEventListener('keydown',e=>e.stopPropagation());
-    p.querySelector('#ctStart').oninput=e=>{ const v=parseHHMM(e.target.value); if(v!=null){ch.timeStart=v;
-      p.querySelector('.ctReadout').innerHTML=`1ª <b>${fmtMin(v)}</b> → última <b>${fmtMin(previewLast(v,ch.timeStep??CLOCK_DEFAULT_STEP))}</b>`; } };
-    p.querySelector('#ctStep').oninput=e=>{ ch.timeStep=+e.target.value; ch.timeStart=ch.timeStart??CLOCK_DEFAULT_START; draw(); };
-    p.querySelector('#ctSave').onclick=()=>{ ch.timeStart=ch.timeStart??CLOCK_DEFAULT_START; ch.timeStep=ch.timeStep??CLOCK_DEFAULT_STEP; save(); closeStatPop(); renderSequence(); toast('Tempo do capítulo salvo.'); };
-    p.querySelector('#ctClear').onclick=()=>{ delete ch.timeStart; delete ch.timeStep; save(); closeStatPop(); renderSequence(); toast('Capítulo volta ao relógio padrão.'); };
+    p.querySelector('#ctEnd').addEventListener('keydown',e=>e.stopPropagation());
+    p.querySelector('#ctStart').oninput=e=>{ const v=parseHHMM(e.target.value); if(v!=null)ch.timeStart=v; };
+    p.querySelector('#ctEnd').oninput=e=>{ const v=parseHHMM(e.target.value); if(v!=null){ch.timeEnd=v; const l=p.querySelector('#ctLast'); if(l)l.textContent=fmtMin(v);} };
+    p.querySelector('#ctSave').onclick=()=>{ ch.timeStart=ch.timeStart??start0; if(nfotos>1)ch.timeEnd=ch.timeEnd??end0; delete ch.timeStep; save(); closeStatPop(); renderSequence(); toast('Tempo do capítulo salvo.'); };
+    p.querySelector('#ctClear').onclick=()=>{ delete ch.timeStart; delete ch.timeEnd; delete ch.timeStep; save(); closeStatPop(); renderSequence(); toast('Capítulo volta ao relógio padrão.'); };
   };
   draw();
   document.body.appendChild(p);
