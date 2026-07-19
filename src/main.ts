@@ -1432,10 +1432,19 @@ function paceOf(i){
   if(gNext!=null)hold=gNext<=PACE.burst?1500:gNext<=PACE.near?2800:gNext<=PACE.far?4000:6000;
   // ritmo automático × ajuste do usuário: global (rcPace) e por-foto (im.pace) multiplicam o hold
   const mult=globalPace()*((cur&&cur.im&&cur.im.pace)||1);
-  hold=Math.round(hold*mult);
+  hold=Math.round(hold*mult*jitterOf(cur));                       // + variação natural (não metronômico)
   // rajada varre mais curto, mas VARRE: sem isso ela ficava parada e pequena, e num festival quase
   // tudo é rajada — era o que fazia o zoom sumir do show inteiro
   return {burst,hold,scan:burst?RCSECS*.5:RCSECS,breath:gNext!=null&&gNext>PACE.far};
+}
+/* variação "natural" no tempo em tela: fator estável por foto (hash do nome, como o closeOf), pra
+   os intervalos não ficarem metronômicos. NÃO toca no relógio/horário — só na duração do slide.
+   Desligável em "Ritmo natural"; ±38% em torno de 1. */
+function jitterOn(){ return localStorage.getItem('rcJitter')!=='0'; }   // ligado por padrão
+function jitterOf(beat){
+  if(!jitterOn()||!beat||!beat.im)return 1;
+  const n=beat.im.name; let h=0; for(let k=0;k<n.length;k++)h=(h*31+n.charCodeAt(k))>>>0;
+  return 0.62 + (h%1000)/1000*0.76;                              // 0.62 .. 1.38
 }
 /* “olhar de perto”: parte das fotos, em vez de recuar até a foto inteira (que numa vertical deixa
    dois terços de tela vazios), para a uns 1.55x e fica ali. Escolha por hash do nome — sorteada,
@@ -1515,12 +1524,14 @@ function renderRecall(){
         <label class="ck"><input type="checkbox" id="rcZoomCk"${RC.zoom?' checked':''}> Zoom automático</label>
         <label class="ck"><input type="checkbox" id="rcPlayCk"${RC.play?' checked':''}> Passar sozinho</label>
         <label class="ck" title="Ritmo geral do slideshow (mais rápido ↔ mais devagar)">Ritmo <input type="range" id="rcPaceR" min="0.5" max="2" step="0.1" value="${globalPace()}" style="width:110px"> <span id="rcPaceLbl" style="font:11px monospace;color:var(--mut);min-width:2.4em">${globalPace().toFixed(1)}×</span></label>
+        <label class="ck" title="Varia um pouco o tempo de cada foto na tela, pra não ficar metronômico (não muda os horários)"><input type="checkbox" id="rcJitterCk"${jitterOn()?' checked':''}> Ritmo natural</label>
       </div>
     </div>
     <div class="chapCards">${cards}</div>
   </div>`;
   $('#rcStart').onclick=()=>rcOpen(0);
   $('#rcPaceR').oninput=e=>{ setGlobalPace(+e.target.value); $('#rcPaceLbl').textContent=(+e.target.value).toFixed(1)+'×'; };
+  $('#rcJitterCk').onchange=e=>localStorage.setItem('rcJitter',e.target.checked?'1':'0');
   $('#rcZoomCk').onchange=e=>rcZoomSet(e.target.checked);
   $('#rcPlayCk').onchange=e=>{RC.play=e.target.checked;localStorage.setItem('rcPlay',RC.play?'1':'0');};
   c.querySelectorAll('.go[data-chap]:not([disabled])').forEach(b=>b.onclick=()=>{
